@@ -35,6 +35,15 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8) !S
     self.allocator = alloc;
     self.config_bytes = try dir.readFileAlloc(self.allocator, filename, 1024 * 5);
     self.config = try parse(Config, self.config_bytes);
+    if (std.mem.eql(u8, self.config.command, "")) return error.MissingCommand;
+    if (!std.mem.eql(u8, self.config.type, "once") and
+        !std.mem.eql(u8, self.config.type, "interval") and
+        !std.mem.eql(u8, self.config.type, "live")) return error.UnknownBlockType;
+    if (!std.mem.eql(u8, self.config.side, "left") and
+        !std.mem.eql(u8, self.config.side, "center") and
+        !std.mem.eql(u8, self.config.side, "right")) return error.UnknownBlockSide;
+    if (std.mem.eql(u8, self.config.type, "interval") and
+        self.config.interval == null) return error.MissingInterval;
     return self;
 }
 
