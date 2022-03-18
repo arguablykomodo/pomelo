@@ -1,9 +1,11 @@
 const std = @import("std");
+const Bar = @import("Bar.zig");
 
 pub fn main() anyerror!void {
-    std.log.info("All your codebase are belong to us.", .{});
-}
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
 
-test "basic test" {
-    try std.testing.expectEqual(10, 3 + 7);
+    var bar = try Bar.init(allocator);
+    defer bar.deinit();
 }
