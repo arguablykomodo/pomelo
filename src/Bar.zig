@@ -1,5 +1,6 @@
 const std = @import("std");
 const parse = @import("ini.zig").parse;
+const wordexp = @import("wordexp.zig");
 const Block = @import("Block.zig");
 
 const Self = @This();
@@ -40,17 +41,9 @@ pub fn init(alloc: std.mem.Allocator) !Self {
     self.allocator = alloc;
 
     var config_dir = x: {
-        var components: [2][]const u8 = undefined;
-        if (std.os.getenv("XDG_CONFIG_DIR")) |xdg_config_dir| {
-            components[0] = xdg_config_dir;
-            components[1] = "/pomelo";
-        } else {
-            components[0] = std.os.getenv("HOME") orelse unreachable;
-            components[1] = "/.config/pomelo";
-        }
-        const path = try std.mem.concat(self.allocator, u8, &components);
-        defer self.allocator.free(path);
-        break :x try std.fs.openDirAbsolute(path, .{});
+        var path = try wordexp.wordexp("${XDG_CONFIG_DIR:-$HOME/.config}/pomelo");
+        defer wordexp.wordfree(&path);
+        break :x try std.fs.openDirAbsolute(std.mem.span(path.we_wordv[0]), .{});
     };
     defer config_dir.close();
 
