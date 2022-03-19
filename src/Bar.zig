@@ -25,15 +25,15 @@ const Config = struct {
     line_color: ?[]const u8 = null,
 
     defaults: Defaults = .{},
+};
 
-    const Defaults = struct {
-        margin_left: usize = 0,
-        margin_right: usize = 0,
-        padding: usize = 0,
-        underline: bool = false,
-        overline: bool = false,
-        background_color: ?[]const u8 = null,
-    };
+pub const Defaults = struct {
+    margin_left: ?usize = null,
+    margin_right: ?usize = null,
+    padding: ?usize = null,
+    underline: bool = false,
+    overline: bool = false,
+    background_color: ?[]const u8 = null,
 };
 
 pub fn init(alloc: std.mem.Allocator) !Self {
@@ -56,15 +56,16 @@ pub fn init(alloc: std.mem.Allocator) !Self {
     var blocks_iterator = blocks_dir.iterate();
     while (try blocks_iterator.next()) |block_file| {
         if (block_file.kind != .File) continue;
-        try self.blocks.append(try Block.init(self.allocator, &blocks_dir, block_file.name));
+        try self.blocks.append(try Block.init(self.allocator, &blocks_dir, block_file.name, &self.config.defaults));
     }
 
     return self;
 }
 
 pub fn start(self: *Self) !void {
-    for (self.blocks.items) |block| {
+    for (self.blocks.items) |*block| {
         try block.start();
+        std.debug.print("{s}{s}{s}", .{ block.prefix.items, block.content, block.postfix.items });
     }
 }
 
