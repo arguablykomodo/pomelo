@@ -11,6 +11,7 @@ expansion: wordexp.wordexp_t,
 args: []const []const u8,
 type: Type,
 side: Side,
+contents: []const u8,
 
 const Config = struct {
     command: []const u8 = "",
@@ -75,14 +76,28 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8) !S
 
     if (self.type == .interval and self.config.interval == null) return error.MissingInterval;
 
+    self.contents = "";
+
     return self;
 }
 
-pub fn start(self: *const Self) !void {
-    const process = try std.ChildProcess.init(self.args, self.allocator);
-    defer process.deinit();
-    try process.spawn();
-    _ = try process.wait();
+pub fn start(self: *Self) !void {
+    switch (self.type) {
+        .once => {
+            const process = try std.ChildProcess.init(self.args, self.allocator);
+            process.stdin_behavior = .Ignore;
+            process.stdout_behavior = .Pipe;
+            process.stderr_behavior = .Inherit;
+            defer process.deinit();
+            try process.spawn();
+            const stdout = process.stdout.?.reader();
+            self.contents = (try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024)) orelse "";
+            _ = try process.wait(); // TODO: inspect exit condition
+
+        },
+        .interval => return error.Unimplemented,
+        .live => return error.Unimplemented,
+    }
 }
 
 pub fn deinit(self: *Self) void {
