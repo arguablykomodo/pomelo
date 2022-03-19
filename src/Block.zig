@@ -9,6 +9,8 @@ config_bytes: []const u8,
 config: Config,
 expansion: wordexp.wordexp_t,
 args: []const []const u8,
+type: Type,
+side: Side,
 
 const Config = struct {
     command: []const u8 = "",
@@ -33,20 +35,16 @@ const Config = struct {
     line_color: ?[]const u8 = null,
 };
 
+const Type = enum { once, interval, live };
+const Side = enum { left, center, right };
+
 pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8) !Self {
     var self: Self = undefined;
     self.allocator = alloc;
     self.config_bytes = try dir.readFileAlloc(self.allocator, filename, 1024 * 5);
     self.config = try parse(Config, self.config_bytes);
+
     if (std.mem.eql(u8, self.config.command, "")) return error.MissingCommand;
-    if (!std.mem.eql(u8, self.config.type, "once") and
-        !std.mem.eql(u8, self.config.type, "interval") and
-        !std.mem.eql(u8, self.config.type, "live")) return error.UnknownBlockType;
-    if (!std.mem.eql(u8, self.config.side, "left") and
-        !std.mem.eql(u8, self.config.side, "center") and
-        !std.mem.eql(u8, self.config.side, "right")) return error.UnknownBlockSide;
-    if (std.mem.eql(u8, self.config.type, "interval") and
-        self.config.interval == null) return error.MissingInterval;
 
     const terminated = try std.mem.concat(self.allocator, u8, &.{ self.config.command, "\x00" });
     defer self.allocator.free(terminated);
@@ -58,6 +56,24 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8) !S
         args[i] = std.mem.span(arg.?);
     }
     self.args = args;
+
+    if (std.mem.eql(u8, self.config.type, "once")) {
+        self.type = .once;
+    } else if (std.mem.eql(u8, self.config.type, "interval")) {
+        self.type = .interval;
+    } else if (std.mem.eql(u8, self.config.type, "live")) {
+        self.type = .live;
+    } else return error.UnknownBlockType;
+
+    if (std.mem.eql(u8, self.config.side, "left")) {
+        self.side = .left;
+    } else if (std.mem.eql(u8, self.config.side, "center")) {
+        self.side = .center;
+    } else if (std.mem.eql(u8, self.config.side, "right")) {
+        self.side = .right;
+    } else return error.UnknownBlockSide;
+
+    if (self.type == .interval and self.config.interval == null) return error.MissingInterval;
 
     return self;
 }
