@@ -1,11 +1,14 @@
 const std = @import("std");
 const parse = @import("ini.zig").parse;
+const wordexp = @import("wordexp.zig");
 
 const Self = @This();
 
 allocator: std.mem.Allocator,
 config_bytes: []const u8,
 config: Config,
+expansion: wordexp.wordexp_t,
+args: []const []const u8,
 
 const Config = struct {
     command: []const u8 = "",
@@ -44,9 +47,30 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8) !S
         !std.mem.eql(u8, self.config.side, "right")) return error.UnknownBlockSide;
     if (std.mem.eql(u8, self.config.type, "interval") and
         self.config.interval == null) return error.MissingInterval;
+
+    const terminated = try std.mem.concat(self.allocator, u8, &.{ self.config.command, "\x00" });
+    defer self.allocator.free(terminated);
+    self.expansion = try wordexp.wordexp(@ptrCast([*c]const u8, terminated));
+
+    const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, self.expansion.we_wordv));
+    var args = try self.allocator.alloc([]const u8, casted.len);
+    for (casted) |arg, i| {
+        args[i] = std.mem.span(arg.?);
+    }
+    self.args = args;
+
     return self;
 }
 
+pub fn start(self: *const Self) !void {
+    const process = try std.ChildProcess.init(self.args, self.allocator);
+    defer process.deinit();
+    try process.spawn();
+    _ = try process.wait();
+}
+
 pub fn deinit(self: *Self) void {
+    self.allocator.free(self.args);
+    wordexp.wordfree(&self.expansion);
     self.allocator.free(self.config_bytes);
 }

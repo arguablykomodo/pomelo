@@ -4,4 +4,6 @@ const Bar = @import("Bar.zig");
 pub fn main() anyerror!void {
     var bar = try Bar.init(std.heap.c_allocator);
     defer bar.deinit();
+
+    try bar.start();
 }

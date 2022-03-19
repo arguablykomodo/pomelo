@@ -62,6 +62,12 @@ pub fn init(alloc: std.mem.Allocator) !Self {
     return self;
 }
 
+pub fn start(self: *Self) !void {
+    for (self.blocks.items) |block| {
+        try block.start();
+    }
+}
+
 pub fn deinit(self: *Self) void {
     for (self.blocks.items) |*block| {
         block.deinit();
