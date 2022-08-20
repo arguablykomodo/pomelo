@@ -51,12 +51,12 @@ pub fn init(alloc: std.mem.Allocator) !Self {
     self.config = try parse(Config, self.config_bytes);
 
     self.blocks = std.ArrayList(Block).init(self.allocator);
-    var blocks_dir = try config_dir.openDir("blocks", .{ .access_sub_paths = false, .iterate = true });
+    var blocks_dir = try config_dir.openIterableDir("blocks", .{ .access_sub_paths = false });
     defer blocks_dir.close();
     var blocks_iterator = blocks_dir.iterate();
     while (try blocks_iterator.next()) |block_file| {
         if (block_file.kind != .File) continue;
-        try self.blocks.append(try Block.init(self.allocator, &blocks_dir, block_file.name, &self.config.defaults));
+        try self.blocks.append(try Block.init(self.allocator, &blocks_dir.dir, block_file.name, &self.config.defaults));
     }
 
     return self;
