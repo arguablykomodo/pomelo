@@ -63,10 +63,57 @@ pub fn init(alloc: std.mem.Allocator) !Self {
 }
 
 pub fn start(self: *Self) !void {
+    var flags = std.ArrayList([]const u8).init(self.allocator);
+
+    try flags.append("lemonbar");
+
+    var geometry = std.ArrayList(u8).init(self.allocator);
+    defer geometry.deinit();
+    var geometry_writer = geometry.writer();
+    if (self.config.width) |w| try geometry_writer.print("{s}", .{w});
+    try geometry_writer.writeByte('x');
+    if (self.config.height) |h| try geometry_writer.print("{s}", .{h});
+    try geometry_writer.writeByte('+');
+    if (self.config.x) |x| try geometry_writer.print("{s}", .{x});
+    try geometry_writer.writeByte('+');
+    if (self.config.y) |y| try geometry_writer.print("{s}", .{y});
+    try flags.append("-g");
+    try flags.append(geometry.items);
+
+    if (self.config.bottom) try flags.append("-b");
+    if (self.config.force_docking) try flags.append("-d");
+    if (self.config.fonts) |fonts| {
+        try flags.append("-f");
+        var split = std.mem.split(u8, fonts, ";");
+        while (split.next()) |font| try flags.append(font);
+    }
+
+    if (self.config.wm_name) |n| {
+        try flags.append("-n");
+        try flags.append(n);
+    }
+
+    if (self.config.line_width) |u| {
+        try flags.append("-u");
+        try flags.append(u);
+    }
+
+    var process = std.ChildProcess.init(flags.items, self.allocator);
+    process.stdin_behavior = .Pipe;
+    try process.spawn();
+    var output = std.io.bufferedWriter(process.stdin.?.writer());
+    var writer = output.writer();
+
     for (self.blocks.items) |*block| {
         try block.start();
-        std.debug.print("{s}{s}{s}", .{ block.prefix.items, block.content, block.postfix.items });
+        try writer.writeAll(block.prefix.items);
+        try writer.writeAll(block.content);
+        try writer.writeAll(block.postfix.items);
     }
+    try writer.writeByte('\n');
+    try output.flush();
+
+    _ = try process.wait();
 }
 
 pub fn deinit(self: *Self) void {
