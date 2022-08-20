@@ -51,9 +51,7 @@ fn parseValue(comptime T: type, bytes: []const u8) !T {
         } else return error.MalformedBoolean,
         .Pointer => {
             if (T != []const u8) return error.Unimplemented;
-            if (bytes[0] != '"') return error.MissingStartQuote;
-            const end = std.mem.indexOfScalarPos(u8, bytes, 1, '"') orelse return error.MissingEndQuote;
-            return bytes[1..end];
+            return bytes;
         },
         .Optional => |opt| return try parseValue(opt.child, bytes),
         else => return error.Unimplemented,

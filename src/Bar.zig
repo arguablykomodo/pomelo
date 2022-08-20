@@ -11,15 +11,15 @@ config: Config,
 blocks: std.ArrayList(Block),
 
 const Config = struct {
-    width: ?usize = null,
-    height: ?usize = null,
-    x: ?usize = null,
-    y: ?usize = null,
+    width: ?[]const u8 = null,
+    height: ?[]const u8 = null,
+    x: ?[]const u8 = null,
+    y: ?[]const u8 = null,
     bottom: bool = false,
     force_docking: bool = false,
     fonts: ?[]const u8 = null,
     wm_name: ?[]const u8 = null,
-    line_width: ?usize = null,
+    line_width: ?[]const u8 = null,
     background_color: ?[]const u8 = null,
     foreground_color: ?[]const u8 = null,
     line_color: ?[]const u8 = null,
@@ -28,9 +28,9 @@ const Config = struct {
 };
 
 pub const Defaults = struct {
-    margin_left: ?usize = null,
-    margin_right: ?usize = null,
-    padding: ?usize = null,
+    margin_left: ?[]const u8 = null,
+    margin_right: ?[]const u8 = null,
+    padding: ?[]const u8 = null,
     underline: bool = false,
     overline: bool = false,
     background_color: ?[]const u8 = null,

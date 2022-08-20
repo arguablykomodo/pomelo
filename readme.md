@@ -12,7 +12,7 @@ optional unless specified otherwise.
 - Integers can be written in decimal, hexadecimal, octal, or binary, as long as
   the correct prefix is used (`0x`, `0o`, or `0b`, respectively).
 - Booleans must be written in all lowercase (`true` or `false`).
-- Strings must be surrounded by double quotes (`"like so"`).
+- Strings don't require quotes.
 
 Check the Lemonbar manual (`man lemonbar`) for more detailed information on all
 the parameters. Most non-visual parameters can be left untouched as they have
@@ -52,9 +52,9 @@ command is executed:
 |Key|Type|Description
 |:-|:-|:-
 |`command`|String|Command to run. **Required**.
-|`type`|String|Block type. Can be `"once"`, `"interval"`, or `"live"`. **Required**.
-|`interval`|Integer|Interval at which the command should be run, in milliseconds. **Required** if `type` is set to `"interval"`
-|`side`|String|Side of the bar to place block in. Can be `"left"`, `"center"`, or `"right"`. **Required**.
+|`mode`|String|Block type. Can be `once`, `interval`, or `live`. **Required**.
+|`interval`|Integer|Interval at which the command should be run, in milliseconds. **Required** if `mode` is set to `interval`
+|`side`|String|Side of the bar to place block in. Can be `left`, `center`, or `right`. **Required**.
 |`position`|Number|Position of the block within its side. Blocks will be sorted left-to-right by this value. Not necessarily continuous.
 |`left_click`|String|Command to execute when the block is left clicked.
 |`middle_click`|String|Command to execute when the block is middle clicked.

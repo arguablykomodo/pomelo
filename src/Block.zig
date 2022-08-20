@@ -8,7 +8,7 @@ const Self = @This();
 allocator: std.mem.Allocator,
 expansion: wordexp.wordexp_t,
 args: []const []const u8,
-type: Type,
+mode: Mode,
 interval: ?usize = null,
 side: Side,
 position: usize = 0,
@@ -16,12 +16,12 @@ prefix: std.ArrayList(u8),
 content: []const u8,
 postfix: std.ArrayList(u8),
 
-const Type = enum { once, interval, live };
+const Mode = enum { once, interval, live };
 const Side = enum { left, center, right };
 
 const Config = struct {
     command: []const u8 = "",
-    type: []const u8 = "",
+    mode: []const u8 = "",
     interval: ?usize = null,
     side: []const u8 = "",
     position: usize = 0,
@@ -32,9 +32,9 @@ const Config = struct {
     scroll_up: ?[]const u8 = null,
     scroll_down: ?[]const u8 = null,
 
-    margin_left: ?usize = null,
-    margin_right: ?usize = null,
-    padding: ?usize = null,
+    margin_left: ?[]const u8 = null,
+    margin_right: ?[]const u8 = null,
+    padding: ?[]const u8 = null,
     underline: ?bool = null,
     overline: ?bool = null,
     background_color: ?[]const u8 = null,
@@ -62,13 +62,13 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     }
     self.args = args;
 
-    if (std.mem.eql(u8, config.type, "once")) {
-        self.type = .once;
-    } else if (std.mem.eql(u8, config.type, "interval")) {
-        self.type = .interval;
-    } else if (std.mem.eql(u8, config.type, "live")) {
-        self.type = .live;
-    } else return error.UnknownBlockType;
+    if (std.mem.eql(u8, config.mode, "once")) {
+        self.mode = .once;
+    } else if (std.mem.eql(u8, config.mode, "interval")) {
+        self.mode = .interval;
+    } else if (std.mem.eql(u8, config.mode, "live")) {
+        self.mode = .live;
+    } else return error.UnknownBlockMode;
 
     if (std.mem.eql(u8, config.side, "left")) {
         self.side = .left;
@@ -78,7 +78,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
         self.side = .right;
     } else return error.UnknownBlockSide;
 
-    if (self.type == .interval and config.interval == null) return error.MissingInterval;
+    if (self.mode == .interval and config.interval == null) return error.MissingInterval;
 
     if (config.margin_left == null) config.margin_left = defaults.*.margin_left;
     if (config.margin_right == null) config.margin_right = defaults.*.margin_right;
@@ -89,7 +89,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
 
     self.prefix = std.ArrayList(u8).init(self.allocator);
     var prefix = self.prefix.writer();
-    if (config.margin_left) |o| try prefix.print("%{{O{}}}", .{o});
+    if (config.margin_left) |o| try prefix.print("%{{O{s}}}", .{o});
     if (config.left_click) |a| try prefix.print("%{{A1:{s}:}}", .{a});
     if (config.middle_click) |a| try prefix.print("%{{A2:{s}:}}", .{a});
     if (config.right_click) |a| try prefix.print("%{{A3:{s}:}}", .{a});
@@ -100,13 +100,13 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     if (config.line_color) |u| try prefix.print("%{{U{s}}}", .{u});
     if (config.underline.?) try prefix.writeAll("%{+u}");
     if (config.overline.?) try prefix.writeAll("%{+o}");
-    if (config.padding) |o| try prefix.print("%{{O{}}}", .{o});
+    if (config.padding) |o| try prefix.print("%{{O{s}}}", .{o});
 
     self.content = "";
 
     self.postfix = std.ArrayList(u8).init(self.allocator);
     var postfix = self.postfix.writer();
-    if (config.padding) |o| try postfix.print("%{{O{}}}", .{o});
+    if (config.padding) |o| try postfix.print("%{{O{s}}}", .{o});
     if (config.overline.?) try postfix.writeAll("%{-o}");
     if (config.underline.?) try postfix.writeAll("%{-u}");
     if (config.line_color) |_| try postfix.writeAll("%{U-}");
@@ -117,19 +117,18 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     if (config.right_click) |_| try postfix.writeAll("%{A}");
     if (config.middle_click) |_| try postfix.writeAll("%{A}");
     if (config.left_click) |_| try postfix.writeAll("%{A}");
-    if (config.margin_right) |o| try postfix.print("%{{O{}}}", .{o});
+    if (config.margin_right) |o| try postfix.print("%{{O{s}}}", .{o});
 
     return self;
 }
 
 pub fn start(self: *Self) !void {
-    switch (self.type) {
+    switch (self.mode) {
         .once => {
-            const process = try std.ChildProcess.init(self.args, self.allocator);
+            var process = std.ChildProcess.init(self.args, self.allocator);
             process.stdin_behavior = .Ignore;
             process.stdout_behavior = .Pipe;
             process.stderr_behavior = .Inherit;
-            defer process.deinit();
             try process.spawn();
             const stdout = process.stdout.?.reader();
             self.content = (try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024)) orelse "";
