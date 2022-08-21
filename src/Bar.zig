@@ -102,8 +102,10 @@ pub fn start(self: *Self) !void {
     self.process = std.ChildProcess.init(flags.items, self.allocator);
     self.process.stdin_behavior = .Pipe;
     try self.process.spawn();
-    for (self.blocks.items) |*block| try block.start(self);
-    for (self.blocks.items) |*block| block.thread.join();
+    for (self.blocks.items) |*block| {
+        try block.start(self);
+        block.thread.join();
+    }
     _ = try self.process.wait();
 }
 

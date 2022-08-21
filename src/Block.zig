@@ -9,7 +9,7 @@ allocator: std.mem.Allocator,
 expansion: wordexp.wordexp_t,
 args: []const []const u8,
 mode: Mode,
-interval: ?usize = null,
+interval: ?u64 = null,
 side: Side,
 position: usize = 0,
 prefix: std.ArrayList(u8),
@@ -23,7 +23,7 @@ const Side = enum { left, center, right };
 const Config = struct {
     command: []const u8 = "",
     mode: []const u8 = "",
-    interval: ?usize = null,
+    interval: ?u64 = null,
     side: []const u8 = "",
     position: usize = 0,
 
@@ -71,6 +71,8 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
         self.mode = .live;
     } else return error.UnknownBlockMode;
 
+    self.interval = config.interval;
+
     if (std.mem.eql(u8, config.side, "left")) {
         self.side = .left;
     } else if (std.mem.eql(u8, config.side, "center")) {
@@ -80,6 +82,8 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     } else return error.UnknownBlockSide;
 
     if (self.mode == .interval and config.interval == null) return error.MissingInterval;
+
+    self.position = config.position;
 
     if (config.margin_left == null) config.margin_left = defaults.*.margin_left;
     if (config.margin_right == null) config.margin_right = defaults.*.margin_right;
@@ -141,7 +145,19 @@ fn threaded(self: *Self, bar: *Bar) !void {
             try bar.update();
             _ = try process.wait(); // TODO: inspect exit condition
         },
-        .interval => return error.Unimplemented,
+        .interval => while (true) {
+            var process = std.ChildProcess.init(self.args, self.allocator);
+            process.stdin_behavior = .Ignore;
+            process.stdout_behavior = .Pipe;
+            process.stderr_behavior = .Inherit;
+            try process.spawn();
+            const stdout = process.stdout.?.reader();
+            if (self.content) |content| self.allocator.free(content);
+            self.content = (try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024)) orelse null;
+            try bar.update();
+            _ = try process.wait(); // TODO: inspect exit condition
+            std.time.sleep(self.interval.? * std.time.ns_per_ms);
+        },
         .live => return error.Unimplemented,
     }
 }
