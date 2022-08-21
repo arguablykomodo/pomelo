@@ -153,12 +153,25 @@ fn threaded(self: *Self, bar: *Bar) !void {
             try process.spawn();
             const stdout = process.stdout.?.reader();
             if (self.content) |content| self.allocator.free(content);
-            self.content = (try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024)) orelse null;
+            self.content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024) orelse null;
             try bar.update();
             _ = try process.wait(); // TODO: inspect exit condition
             std.time.sleep(self.interval.? * std.time.ns_per_ms);
         },
-        .live => return error.Unimplemented,
+        .live => {
+            var process = std.ChildProcess.init(self.args, self.allocator);
+            process.stdin_behavior = .Ignore;
+            process.stdout_behavior = .Pipe;
+            process.stderr_behavior = .Inherit;
+            try process.spawn();
+            while (true) {
+                const stdout = process.stdout.?.reader();
+                const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
+                if (self.content) |content| self.allocator.free(content);
+                self.content = new_content;
+                try bar.update();
+            }
+        },
     }
 }
 
