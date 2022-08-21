@@ -59,6 +59,7 @@ pub fn init(alloc: std.mem.Allocator) !Self {
         if (block_file.kind != .File) continue;
         try self.blocks.append(try Block.init(self.allocator, &blocks_dir.dir, block_file.name, &self.config.defaults));
     }
+    std.sort.sort(Block, self.blocks.items, void, Block.sort);
 
     return self;
 }
@@ -124,14 +125,34 @@ pub fn start(self: *Self) !void {
 
 pub fn update(self: *Self) !void {
     var output = std.io.bufferedWriter(self.process.stdin.?.writer());
-    var writer = output.writer();
+
+    var left = std.ArrayList(u8).init(self.allocator);
+    defer left.deinit();
+    var center = std.ArrayList(u8).init(self.allocator);
+    defer center.deinit();
+    var right = std.ArrayList(u8).init(self.allocator);
+    defer right.deinit();
+
     for (self.blocks.items) |*block| {
         if (block.content) |content| {
+            const writer = switch (block.side) {
+                .left => left.writer(),
+                .center => center.writer(),
+                .right => right.writer(),
+            };
             try writer.writeAll(block.prefix.items);
             try writer.writeAll(content);
             try writer.writeAll(block.postfix.items);
         }
     }
+
+    var writer = output.writer();
+    try writer.writeAll("%{l}");
+    try writer.writeAll(left.items);
+    try writer.writeAll("%{c}");
+    try writer.writeAll(center.items);
+    try writer.writeAll("%{r}");
+    try writer.writeAll(right.items);
     try writer.writeByte('\n');
     try output.flush();
 }

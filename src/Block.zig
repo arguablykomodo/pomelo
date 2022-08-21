@@ -127,6 +127,10 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     return self;
 }
 
+pub fn sort(_: type, lhs: Self, rhs: Self) bool {
+    return lhs.position < rhs.position;
+}
+
 pub fn start(self: *Self, bar: *Bar) !void {
     self.thread = try std.Thread.spawn(.{}, Self.threaded, .{ self, bar });
 }
