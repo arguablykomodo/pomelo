@@ -99,6 +99,21 @@ pub fn start(self: *Self) !void {
         try flags.append(u);
     }
 
+    if (self.config.background_color) |b| {
+        try flags.append("-B");
+        try flags.append(b);
+    }
+
+    if (self.config.foreground_color) |f| {
+        try flags.append("-F");
+        try flags.append(f);
+    }
+
+    if (self.config.line_color) |u| {
+        try flags.append("-U");
+        try flags.append(u);
+    }
+
     self.process = std.ChildProcess.init(flags.items, self.allocator);
     self.process.stdin_behavior = .Pipe;
     try self.process.spawn();
