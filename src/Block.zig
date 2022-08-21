@@ -13,8 +13,9 @@ interval: ?usize = null,
 side: Side,
 position: usize = 0,
 prefix: std.ArrayList(u8),
-content: []const u8,
+content: ?[]const u8,
 postfix: std.ArrayList(u8),
+thread: std.Thread,
 
 const Mode = enum { once, interval, live };
 const Side = enum { left, center, right };
@@ -102,7 +103,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     if (config.overline.?) try prefix.writeAll("%{+o}");
     if (config.padding) |o| try prefix.print("%{{O{s}}}", .{o});
 
-    self.content = "";
+    self.content = null;
 
     self.postfix = std.ArrayList(u8).init(self.allocator);
     var postfix = self.postfix.writer();
@@ -122,7 +123,11 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     return self;
 }
 
-pub fn start(self: *Self) !void {
+pub fn start(self: *Self, bar: *Bar) !void {
+    self.thread = try std.Thread.spawn(.{}, Self.threaded, .{ self, bar });
+}
+
+fn threaded(self: *Self, bar: *Bar) !void {
     switch (self.mode) {
         .once => {
             var process = std.ChildProcess.init(self.args, self.allocator);
@@ -131,9 +136,10 @@ pub fn start(self: *Self) !void {
             process.stderr_behavior = .Inherit;
             try process.spawn();
             const stdout = process.stdout.?.reader();
-            self.content = (try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024)) orelse "";
+            if (self.content) |content| self.allocator.free(content);
+            self.content = (try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024)) orelse null;
+            try bar.update();
             _ = try process.wait(); // TODO: inspect exit condition
-
         },
         .interval => return error.Unimplemented,
         .live => return error.Unimplemented,
@@ -145,5 +151,5 @@ pub fn deinit(self: *Self) void {
     wordexp.wordfree(&self.expansion);
     self.prefix.deinit();
     self.postfix.deinit();
-    self.allocator.free(self.content);
+    if (self.content) |content| self.allocator.free(content);
 }
