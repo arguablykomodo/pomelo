@@ -31,6 +31,9 @@ pub fn build(b: *std.build.Builder) void {
     exe_tests.setBuildMode(mode);
     exe_tests.linkLibC();
 
+    const coverage = b.option(bool, "test-coverage", "Generate test coverage (requires `kcov`)") orelse false;
+    if (coverage) exe_tests.setExecCmd(&[_]?[]const u8{ "kcov", "--include-path", ".", "kcov-output", null });
+
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&exe_tests.step);
 }
