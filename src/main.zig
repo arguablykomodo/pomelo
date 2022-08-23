@@ -7,3 +7,7 @@ pub fn main() anyerror!void {
 
     try bar.start();
 }
+
+test {
+    _ = @import("ini.zig");
+}

@@ -1,6 +1,13 @@
 const std = @import("std");
 
-pub fn parse(comptime T: type, bytes: []const u8) !T {
+const ParseError = error{
+    MissingSectionClose,
+    UnknownSection,
+    MissingEquals,
+    UnknownField,
+} || ParseValueError;
+
+pub fn parse(comptime T: type, bytes: []const u8) ParseError!T {
     const fields = @typeInfo(T).Struct.fields;
 
     var parsed: T = .{};
@@ -11,7 +18,7 @@ pub fn parse(comptime T: type, bytes: []const u8) !T {
         switch (trimmed[0]) {
             ';' => continue,
             '[' => {
-                const end = std.mem.indexOfScalar(u8, trimmed, ']') orelse return error.MissingSectionClose;
+                const end = std.mem.indexOfScalar(u8, trimmed, ']') orelse return ParseError.MissingSectionClose;
                 const section = trimmed[1..end];
                 inline for (fields) |field| {
                     switch (@typeInfo(field.field_type)) {
@@ -23,10 +30,10 @@ pub fn parse(comptime T: type, bytes: []const u8) !T {
                         @field(parsed, field.name) = try parse(field.field_type, lines.rest());
                         return parsed; // No support for multiple sections.
                     }
-                } else return error.UnknownSection;
+                } else return ParseError.UnknownSection;
             },
             else => {
-                const separator = std.mem.indexOfScalar(u8, trimmed, '=') orelse return error.MissingEquals;
+                const separator = std.mem.indexOfScalar(u8, trimmed, '=') orelse return ParseError.MissingEquals;
                 const key = std.mem.trim(u8, trimmed[0..separator], &std.ascii.spaces);
                 const value = std.mem.trim(u8, trimmed[separator + 1 ..], &std.ascii.spaces);
                 inline for (fields) |field| {
@@ -34,26 +41,74 @@ pub fn parse(comptime T: type, bytes: []const u8) !T {
                         @field(parsed, field.name) = try parseValue(field.field_type, value);
                         break;
                     }
-                } else return error.UnknownField;
+                } else return ParseError.UnknownField;
             },
         }
     }
     return parsed;
 }
 
-fn parseValue(comptime T: type, bytes: []const u8) !T {
+const ParseValueError = error{
+    MalformedBoolean,
+    Unimplemented,
+} || std.fmt.ParseIntError;
+
+fn parseValue(comptime T: type, bytes: []const u8) ParseValueError!T {
     switch (@typeInfo(T)) {
         .Int => return try std.fmt.parseInt(T, bytes, 0),
         .Bool => if (std.mem.eql(u8, bytes, "true")) {
             return true;
         } else if (std.mem.eql(u8, bytes, "false")) {
             return false;
-        } else return error.MalformedBoolean,
+        } else return ParseValueError.MalformedBoolean,
         .Pointer => {
-            if (T != []const u8) return error.Unimplemented;
+            if (T != []const u8) return ParseValueError.Unimplemented;
             return bytes;
         },
         .Optional => |opt| return try parseValue(opt.child, bytes),
-        else => return error.Unimplemented,
+        else => return ParseValueError.Unimplemented,
     }
+}
+
+test "parse" {
+    const Struct = struct {
+        foo: u64 = 0,
+        bar: struct { baz: u64 = 0 } = .{},
+    };
+    try std.testing.expectEqual(Struct{ .foo = 10 }, try parse(Struct, "foo = 10"));
+    try std.testing.expectEqual(Struct{ .foo = 10 }, try parse(Struct,
+        \\; This is a comment
+        \\foo = 10
+    ));
+    try std.testing.expectEqual(Struct{ .foo = 10, .bar = .{ .baz = 10 } }, try parse(Struct,
+        \\foo = 10
+        \\[bar]
+        \\baz = 10
+    ));
+    try std.testing.expectError(ParseError.MissingSectionClose, parse(Struct, "[what"));
+    try std.testing.expectError(ParseError.UnknownField, parse(Struct, "baz = 10"));
+    try std.testing.expectError(ParseError.UnknownSection, parse(Struct,
+        \\[what]
+        \\bar = 10
+    ));
+}
+
+test "parseValue" {
+    try std.testing.expectEqual(@as(u64, 10), try parseValue(u64, "10"));
+    try std.testing.expectEqual(@as(u64, 10), try parseValue(u64, "0xA"));
+    try std.testing.expectEqual(@as(u64, 10), try parseValue(u64, "0o12"));
+    try std.testing.expectEqual(@as(u64, 10), try parseValue(u64, "0b1010"));
+
+    try std.testing.expectEqual(false, try parseValue(bool, "false"));
+    try std.testing.expectEqual(true, try parseValue(bool, "true"));
+    try std.testing.expectError(ParseValueError.MalformedBoolean, parseValue(bool, "foo"));
+
+    try std.testing.expectEqualStrings("foo", try parseValue([]const u8, "foo"));
+    try std.testing.expectEqualStrings("\"bar\"", try parseValue([]const u8, "\"bar\""));
+    try std.testing.expectError(ParseValueError.Unimplemented, parseValue(*u64, "foo"));
+
+    try std.testing.expectEqual(@as(?bool, false), try parseValue(?bool, "false"));
+    try std.testing.expectEqual(@as(?bool, true), try parseValue(?bool, "true"));
+
+    try std.testing.expectError(ParseValueError.Unimplemented, parseValue(f32, "5.0"));
 }
