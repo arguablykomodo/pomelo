@@ -18,6 +18,8 @@ Check the Lemonbar manual (`man lemonbar`) for more detailed information on all
 the parameters. Most non-visual parameters can be left untouched as they have
 sane defaults.
 
+An example configuration can be found in the `example` directory.
+
 ### Bar
 
 These are all set in the `pomelo.ini` file.
