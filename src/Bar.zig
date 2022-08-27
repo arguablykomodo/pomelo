@@ -44,7 +44,7 @@ pub fn init(config_dir: std.fs.Dir, alloc: std.mem.Allocator) !Self {
 
     var blocks = std.ArrayList(Block).init(alloc);
     errdefer {
-        for (blocks.items) |*block| block.deinit();
+        for (blocks.items) |block| block.deinit();
         blocks.deinit();
     }
     var blocks_dir = try config_dir.openIterableDir("blocks", .{ .access_sub_paths = false });
@@ -121,7 +121,7 @@ pub fn start(self: *Self) !void {
     try process.spawn();
     self.bar_writer = std.io.bufferedWriter(process.stdin.?.writer());
     for (self.blocks.items) |*block| try block.start(self);
-    for (self.blocks.items) |*block| block.thread.join();
+    for (self.blocks.items) |block| block.thread.join();
     _ = try process.wait();
 }
 
@@ -133,7 +133,7 @@ pub fn update(self: *Self) !void {
     var right = std.ArrayList(u8).init(self.allocator);
     defer right.deinit();
 
-    for (self.blocks.items) |*block| {
+    for (self.blocks.items) |block| {
         if (block.content) |content| {
             const writer = switch (block.side) {
                 .left => left.writer(),
@@ -146,7 +146,7 @@ pub fn update(self: *Self) !void {
         }
     }
 
-    var writer = self.bar_writer.writer();
+    const writer = self.bar_writer.writer();
     try writer.writeAll("%{l}");
     try writer.writeAll(left.items);
     try writer.writeAll("%{c}");
@@ -157,8 +157,8 @@ pub fn update(self: *Self) !void {
     try self.bar_writer.flush();
 }
 
-pub fn deinit(self: *Self) void {
-    for (self.blocks.items) |*block| block.deinit();
+pub fn deinit(self: *const Self) void {
+    for (self.blocks.items) |block| block.deinit();
     self.blocks.deinit();
     self.allocator.free(self.config_bytes);
 }
@@ -167,6 +167,6 @@ test "init" {
     var cwd = try std.fs.cwd().openDir("example", .{});
     defer cwd.close();
 
-    var bar = try Self.init(cwd, std.testing.allocator);
+    const bar = try Self.init(cwd, std.testing.allocator);
     defer bar.deinit();
 }

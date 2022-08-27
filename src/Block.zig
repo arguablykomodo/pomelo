@@ -47,7 +47,7 @@ const BlockError = error{
     UnknownBlockSide,
 };
 
-pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, defaults: *const Bar.Defaults) !Self {
+pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const u8, defaults: *const Bar.Defaults) !Self {
     const config_bytes = try dir.readFileAlloc(alloc, filename, 1024 * 5);
     defer alloc.free(config_bytes);
     var config = try parse(Config, config_bytes);
@@ -78,7 +78,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
 
             const terminated = try std.mem.concat(alloc, u8, &.{ config.command, "\x00" });
             defer alloc.free(terminated);
-            var expansion = try wordexp.wordexp(@ptrCast([*c]const u8, terminated));
+            const expansion = try wordexp.wordexp(@ptrCast([*c]const u8, terminated));
             defer wordexp.wordfree(&expansion);
 
             const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, expansion.we_wordv));
@@ -101,7 +101,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
         },
         .position = config.position,
         .prefix = blk: {
-            var writer = prefix.writer();
+            const writer = prefix.writer();
             if (config.margin_left) |o| try writer.print("%{{O{s}}}", .{o});
             if (config.left_click) |a| try writer.print("%{{A1:{s}:}}", .{a});
             if (config.middle_click) |a| try writer.print("%{{A2:{s}:}}", .{a});
@@ -118,7 +118,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
         },
         .content = null,
         .postfix = blk: {
-            var writer = postfix.writer();
+            const writer = postfix.writer();
             if (config.padding) |o| try writer.print("%{{O{s}}}", .{o});
             if (config.overline.?) try writer.writeAll("%{-o}");
             if (config.underline.?) try writer.writeAll("%{-u}");
@@ -191,7 +191,7 @@ fn threaded(self: *Self, bar: *Bar) !void {
     }
 }
 
-pub fn deinit(self: *Self) void {
+pub fn deinit(self: *const Self) void {
     for (self.args.items) |arg| self.allocator.free(arg);
     self.args.deinit();
     self.prefix.deinit();
@@ -202,12 +202,12 @@ pub fn deinit(self: *Self) void {
 test "init" {
     var cwd = try std.fs.cwd().openDir("test/blocks", .{});
     defer cwd.close();
-    var block = try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{});
-    block.deinit();
-    block = try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{});
-    block.deinit();
-    block = try Self.init(std.testing.allocator, &cwd, "live.ini", &Bar.Defaults{});
-    block.deinit();
+    const once = try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{});
+    defer once.deinit();
+    const interval = try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{});
+    defer interval.deinit();
+    const live = try Self.init(std.testing.allocator, &cwd, "live.ini", &Bar.Defaults{});
+    defer live.deinit();
     try std.testing.expectError(BlockError.UnknownBlockMode, Self.init(std.testing.allocator, &cwd, "unknown_block.ini", &Bar.Defaults{}));
     try std.testing.expectError(BlockError.UnknownBlockSide, Self.init(std.testing.allocator, &cwd, "unknown_side.ini", &Bar.Defaults{}));
 }
@@ -220,7 +220,7 @@ test "sort" {
         try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{}),
         try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{}),
     };
-    defer for (blocks) |*block| block.deinit();
+    defer for (blocks) |block| block.deinit();
     std.sort.sort(Self, &blocks, void, Self.sort);
     try std.testing.expectEqual(Mode.once, blocks[0].mode);
     try std.testing.expectEqual(Mode.interval, blocks[1].mode);
