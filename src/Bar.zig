@@ -38,9 +38,6 @@ pub const Defaults = struct {
 };
 
 pub fn init(alloc: std.mem.Allocator) !Self {
-    var self: Self = undefined;
-    self.allocator = alloc;
-
     var config_dir = x: {
         var path = try wordexp.wordexp("${XDG_CONFIG_DIR:-$HOME/.config}/pomelo");
         defer wordexp.wordfree(&path);
@@ -48,20 +45,31 @@ pub fn init(alloc: std.mem.Allocator) !Self {
     };
     defer config_dir.close();
 
-    self.config_bytes = try config_dir.readFileAlloc(self.allocator, "pomelo.ini", 1024 * 5);
-    self.config = try parse(Config, self.config_bytes);
+    const config_bytes = try config_dir.readFileAlloc(alloc, "pomelo.ini", 1024 * 5);
+    errdefer alloc.free(config_bytes);
+    const config = try parse(Config, config_bytes);
 
-    self.blocks = std.ArrayList(Block).init(self.allocator);
+    var blocks = std.ArrayList(Block).init(alloc);
+    errdefer {
+        for (blocks.items) |*block| block.deinit();
+        blocks.deinit();
+    }
     var blocks_dir = try config_dir.openIterableDir("blocks", .{ .access_sub_paths = false });
     defer blocks_dir.close();
     var blocks_iterator = blocks_dir.iterate();
     while (try blocks_iterator.next()) |block_file| {
         if (block_file.kind != .File) continue;
-        try self.blocks.append(try Block.init(self.allocator, &blocks_dir.dir, block_file.name, &self.config.defaults));
+        try blocks.append(try Block.init(alloc, &blocks_dir.dir, block_file.name, &config.defaults));
     }
-    std.sort.sort(Block, self.blocks.items, void, Block.sort);
+    std.sort.sort(Block, blocks.items, void, Block.sort);
 
-    return self;
+    return Self{
+        .allocator = alloc,
+        .config_bytes = config_bytes,
+        .config = config,
+        .blocks = blocks,
+        .bar_writer = undefined,
+    };
 }
 
 pub fn start(self: *Self) !void {
