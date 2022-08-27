@@ -9,7 +9,7 @@ allocator: std.mem.Allocator,
 config_bytes: []const u8,
 config: Config,
 blocks: std.ArrayList(Block),
-process: std.ChildProcess,
+bar_writer: std.io.BufferedWriter(4096, if (@import("builtin").is_test) std.ArrayList(u8).Writer else std.fs.File.Writer),
 
 const Config = struct {
     width: ?[]const u8 = null,
@@ -115,17 +115,16 @@ pub fn start(self: *Self) !void {
         try flags.append(u);
     }
 
-    self.process = std.ChildProcess.init(flags.items, self.allocator);
-    self.process.stdin_behavior = .Pipe;
-    try self.process.spawn();
+    var process = std.ChildProcess.init(flags.items, self.allocator);
+    process.stdin_behavior = .Pipe;
+    try process.spawn();
+    self.bar_writer = std.io.bufferedWriter(process.stdin.?.writer());
     for (self.blocks.items) |*block| try block.start(self);
     for (self.blocks.items) |*block| block.thread.join();
-    _ = try self.process.wait();
+    _ = try process.wait();
 }
 
 pub fn update(self: *Self) !void {
-    var output = std.io.bufferedWriter(self.process.stdin.?.writer());
-
     var left = std.ArrayList(u8).init(self.allocator);
     defer left.deinit();
     var center = std.ArrayList(u8).init(self.allocator);
@@ -146,7 +145,7 @@ pub fn update(self: *Self) !void {
         }
     }
 
-    var writer = output.writer();
+    var writer = self.bar_writer.writer();
     try writer.writeAll("%{l}");
     try writer.writeAll(left.items);
     try writer.writeAll("%{c}");
@@ -154,13 +153,11 @@ pub fn update(self: *Self) !void {
     try writer.writeAll("%{r}");
     try writer.writeAll(right.items);
     try writer.writeByte('\n');
-    try output.flush();
+    try self.bar_writer.flush();
 }
 
 pub fn deinit(self: *Self) void {
-    for (self.blocks.items) |*block| {
-        block.deinit();
-    }
+    for (self.blocks.items) |*block| block.deinit();
     self.blocks.deinit();
     self.allocator.free(self.config_bytes);
 }
