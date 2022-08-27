@@ -37,14 +37,7 @@ pub const Defaults = struct {
     background_color: ?[]const u8 = null,
 };
 
-pub fn init(alloc: std.mem.Allocator) !Self {
-    var config_dir = x: {
-        var path = try wordexp.wordexp("${XDG_CONFIG_DIR:-$HOME/.config}/pomelo");
-        defer wordexp.wordfree(&path);
-        break :x try std.fs.openDirAbsolute(std.mem.span(path.we_wordv[0]), .{});
-    };
-    defer config_dir.close();
-
+pub fn init(config_dir: std.fs.Dir, alloc: std.mem.Allocator) !Self {
     const config_bytes = try config_dir.readFileAlloc(alloc, "pomelo.ini", 1024 * 5);
     errdefer alloc.free(config_bytes);
     const config = try parse(Config, config_bytes);
@@ -168,4 +161,12 @@ pub fn deinit(self: *Self) void {
     for (self.blocks.items) |*block| block.deinit();
     self.blocks.deinit();
     self.allocator.free(self.config_bytes);
+}
+
+test "init" {
+    var cwd = try std.fs.cwd().openDir("example", .{});
+    defer cwd.close();
+
+    var bar = try Self.init(cwd, std.testing.allocator);
+    defer bar.deinit();
 }
