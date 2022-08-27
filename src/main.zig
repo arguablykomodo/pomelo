@@ -11,4 +11,5 @@ pub fn main() anyerror!void {
 test {
     _ = @import("ini.zig");
     _ = @import("wordexp.zig");
+    _ = @import("Block.zig");
 }

@@ -43,7 +43,12 @@ const Config = struct {
     line_color: ?[]const u8 = null,
 };
 
-pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, defaults: *Bar.Defaults) !Self {
+const BlockError = error{
+    UnknownBlockMode,
+    UnknownBlockSide,
+};
+
+pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, defaults: *const Bar.Defaults) !Self {
     var self: Self = undefined;
     self.allocator = alloc;
     const config_bytes = try dir.readFileAlloc(self.allocator, filename, 1024 * 5);
@@ -58,6 +63,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
 
     const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, self.expansion.we_wordv));
     var args = try self.allocator.alloc([]const u8, casted.len);
+    errdefer self.allocator.free(args);
     for (casted) |arg, i| {
         args[i] = std.mem.span(arg.?);
     }
@@ -69,7 +75,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
         self.mode = .interval;
     } else if (std.mem.eql(u8, config.mode, "live")) {
         self.mode = .live;
-    } else return error.UnknownBlockMode;
+    } else return BlockError.UnknownBlockMode;
 
     self.interval = config.interval;
 
@@ -79,7 +85,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
         self.side = .center;
     } else if (std.mem.eql(u8, config.side, "right")) {
         self.side = .right;
-    } else return error.UnknownBlockSide;
+    } else return BlockError.UnknownBlockSide;
 
     if (self.mode == .interval and config.interval == null) return error.MissingInterval;
 
@@ -127,7 +133,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     return self;
 }
 
-pub fn sort(_: type, lhs: Self, rhs: Self) bool {
+pub fn sort(comptime _: type, lhs: Self, rhs: Self) bool {
     return lhs.position < rhs.position;
 }
 
@@ -168,8 +174,8 @@ fn threaded(self: *Self, bar: *Bar) !void {
             process.stdout_behavior = .Pipe;
             process.stderr_behavior = .Inherit;
             try process.spawn();
+            const stdout = process.stdout.?.reader();
             while (true) {
-                const stdout = process.stdout.?.reader();
                 const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
                 if (self.content) |content| self.allocator.free(content);
                 self.content = new_content;
@@ -185,4 +191,32 @@ pub fn deinit(self: *Self) void {
     self.prefix.deinit();
     self.postfix.deinit();
     if (self.content) |content| self.allocator.free(content);
+}
+
+test "init" {
+    var cwd = try std.fs.cwd().openDir("test/blocks", .{});
+    defer cwd.close();
+    var block = try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{});
+    block.deinit();
+    block = try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{});
+    block.deinit();
+    block = try Self.init(std.testing.allocator, &cwd, "live.ini", &Bar.Defaults{});
+    block.deinit();
+    try std.testing.expectError(BlockError.UnknownBlockMode, Self.init(std.testing.allocator, &cwd, "unknown_block.ini", &Bar.Defaults{}));
+    try std.testing.expectError(BlockError.UnknownBlockSide, Self.init(std.testing.allocator, &cwd, "unknown_side.ini", &Bar.Defaults{}));
+}
+
+test "sort" {
+    var cwd = try std.fs.cwd().openDir("test/blocks", .{});
+    defer cwd.close();
+    var blocks = [3]Self{
+        try Self.init(std.testing.allocator, &cwd, "live.ini", &Bar.Defaults{}),
+        try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{}),
+        try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{}),
+    };
+    defer for (blocks) |*block| block.deinit();
+    std.sort.sort(Self, &blocks, void, Self.sort);
+    try std.testing.expectEqual(Mode.once, blocks[0].mode);
+    try std.testing.expectEqual(Mode.interval, blocks[1].mode);
+    try std.testing.expectEqual(Mode.live, blocks[2].mode);
 }
