@@ -6,8 +6,7 @@ const Bar = @import("Bar.zig");
 const Self = @This();
 
 allocator: std.mem.Allocator,
-expansion: wordexp.wordexp_t,
-args: []const []const u8,
+args: std.ArrayList([]const u8),
 mode: Mode,
 interval: ?u64 = null,
 side: Side,
@@ -49,47 +48,9 @@ const BlockError = error{
 };
 
 pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, defaults: *const Bar.Defaults) !Self {
-    var self: Self = undefined;
-    self.allocator = alloc;
-    const config_bytes = try dir.readFileAlloc(self.allocator, filename, 1024 * 5);
-    defer self.allocator.free(config_bytes);
+    const config_bytes = try dir.readFileAlloc(alloc, filename, 1024 * 5);
+    defer alloc.free(config_bytes);
     var config = try parse(Config, config_bytes);
-
-    if (std.mem.eql(u8, config.command, "")) return error.MissingCommand;
-
-    const terminated = try std.mem.concat(self.allocator, u8, &.{ config.command, "\x00" });
-    defer self.allocator.free(terminated);
-    self.expansion = try wordexp.wordexp(@ptrCast([*c]const u8, terminated));
-
-    const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, self.expansion.we_wordv));
-    var args = try self.allocator.alloc([]const u8, casted.len);
-    errdefer self.allocator.free(args);
-    for (casted) |arg, i| {
-        args[i] = std.mem.span(arg.?);
-    }
-    self.args = args;
-
-    if (std.mem.eql(u8, config.mode, "once")) {
-        self.mode = .once;
-    } else if (std.mem.eql(u8, config.mode, "interval")) {
-        self.mode = .interval;
-    } else if (std.mem.eql(u8, config.mode, "live")) {
-        self.mode = .live;
-    } else return BlockError.UnknownBlockMode;
-
-    self.interval = config.interval;
-
-    if (std.mem.eql(u8, config.side, "left")) {
-        self.side = .left;
-    } else if (std.mem.eql(u8, config.side, "center")) {
-        self.side = .center;
-    } else if (std.mem.eql(u8, config.side, "right")) {
-        self.side = .right;
-    } else return BlockError.UnknownBlockSide;
-
-    if (self.mode == .interval and config.interval == null) return error.MissingInterval;
-
-    self.position = config.position;
 
     if (config.margin_left == null) config.margin_left = defaults.*.margin_left;
     if (config.margin_right == null) config.margin_right = defaults.*.margin_right;
@@ -98,39 +59,82 @@ pub fn init(alloc: std.mem.Allocator, dir: *std.fs.Dir, filename: []const u8, de
     if (config.overline == null) config.overline = defaults.*.overline;
     if (config.background_color == null) config.background_color = defaults.*.background_color;
 
-    self.prefix = std.ArrayList(u8).init(self.allocator);
-    var prefix = self.prefix.writer();
-    if (config.margin_left) |o| try prefix.print("%{{O{s}}}", .{o});
-    if (config.left_click) |a| try prefix.print("%{{A1:{s}:}}", .{a});
-    if (config.middle_click) |a| try prefix.print("%{{A2:{s}:}}", .{a});
-    if (config.right_click) |a| try prefix.print("%{{A3:{s}:}}", .{a});
-    if (config.scroll_up) |a| try prefix.print("%{{A4:{s}:}}", .{a});
-    if (config.scroll_down) |a| try prefix.print("%{{A5:{s}:}}", .{a});
-    if (config.background_color) |b| try prefix.print("%{{B{s}}}", .{b});
-    if (config.foreground_color) |f| try prefix.print("%{{F{s}}}", .{f});
-    if (config.line_color) |u| try prefix.print("%{{U{s}}}", .{u});
-    if (config.underline.?) try prefix.writeAll("%{+u}");
-    if (config.overline.?) try prefix.writeAll("%{+o}");
-    if (config.padding) |o| try prefix.print("%{{O{s}}}", .{o});
+    var args = std.ArrayList([]const u8).init(alloc);
+    errdefer {
+        for (args.items) |arg| alloc.free(arg);
+        args.deinit();
+    }
 
-    self.content = null;
+    var prefix = std.ArrayList(u8).init(alloc);
+    errdefer prefix.deinit();
 
-    self.postfix = std.ArrayList(u8).init(self.allocator);
-    var postfix = self.postfix.writer();
-    if (config.padding) |o| try postfix.print("%{{O{s}}}", .{o});
-    if (config.overline.?) try postfix.writeAll("%{-o}");
-    if (config.underline.?) try postfix.writeAll("%{-u}");
-    if (config.line_color) |_| try postfix.writeAll("%{U-}");
-    if (config.foreground_color) |_| try postfix.writeAll("%{F-}");
-    if (config.background_color) |_| try postfix.writeAll("%{B-}");
-    if (config.scroll_down) |_| try postfix.writeAll("%{A}");
-    if (config.scroll_up) |_| try postfix.writeAll("%{A}");
-    if (config.right_click) |_| try postfix.writeAll("%{A}");
-    if (config.middle_click) |_| try postfix.writeAll("%{A}");
-    if (config.left_click) |_| try postfix.writeAll("%{A}");
-    if (config.margin_right) |o| try postfix.print("%{{O{s}}}", .{o});
+    var postfix = std.ArrayList(u8).init(alloc);
+    errdefer postfix.deinit();
 
-    return self;
+    return Self{
+        .allocator = alloc,
+        .args = blk: {
+            if (std.mem.eql(u8, config.command, "")) return error.MissingCommand;
+
+            const terminated = try std.mem.concat(alloc, u8, &.{ config.command, "\x00" });
+            defer alloc.free(terminated);
+            var expansion = try wordexp.wordexp(@ptrCast([*c]const u8, terminated));
+            defer wordexp.wordfree(&expansion);
+
+            const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, expansion.we_wordv));
+            for (casted) |arg| try args.append(try alloc.dupe(u8, std.mem.span(arg.?)));
+
+            break :blk args;
+        },
+        .mode = blk: {
+            if (std.mem.eql(u8, config.mode, "once")) break :blk Mode.once;
+            if (std.mem.eql(u8, config.mode, "interval")) break :blk Mode.interval;
+            if (std.mem.eql(u8, config.mode, "live")) break :blk Mode.live;
+            return BlockError.UnknownBlockMode;
+        },
+        .interval = if (std.mem.eql(u8, config.mode, "interval") and config.interval == null) return error.MissingInterval else config.interval,
+        .side = blk: {
+            if (std.mem.eql(u8, config.side, "left")) break :blk Side.left;
+            if (std.mem.eql(u8, config.side, "center")) break :blk Side.center;
+            if (std.mem.eql(u8, config.side, "right")) break :blk Side.right;
+            return BlockError.UnknownBlockSide;
+        },
+        .position = config.position,
+        .prefix = blk: {
+            var writer = prefix.writer();
+            if (config.margin_left) |o| try writer.print("%{{O{s}}}", .{o});
+            if (config.left_click) |a| try writer.print("%{{A1:{s}:}}", .{a});
+            if (config.middle_click) |a| try writer.print("%{{A2:{s}:}}", .{a});
+            if (config.right_click) |a| try writer.print("%{{A3:{s}:}}", .{a});
+            if (config.scroll_up) |a| try writer.print("%{{A4:{s}:}}", .{a});
+            if (config.scroll_down) |a| try writer.print("%{{A5:{s}:}}", .{a});
+            if (config.background_color) |b| try writer.print("%{{B{s}}}", .{b});
+            if (config.foreground_color) |f| try writer.print("%{{F{s}}}", .{f});
+            if (config.line_color) |u| try writer.print("%{{U{s}}}", .{u});
+            if (config.underline.?) try writer.writeAll("%{+u}");
+            if (config.overline.?) try writer.writeAll("%{+o}");
+            if (config.padding) |o| try writer.print("%{{O{s}}}", .{o});
+            break :blk prefix;
+        },
+        .content = null,
+        .postfix = blk: {
+            var writer = postfix.writer();
+            if (config.padding) |o| try writer.print("%{{O{s}}}", .{o});
+            if (config.overline.?) try writer.writeAll("%{-o}");
+            if (config.underline.?) try writer.writeAll("%{-u}");
+            if (config.line_color) |_| try writer.writeAll("%{U-}");
+            if (config.foreground_color) |_| try writer.writeAll("%{F-}");
+            if (config.background_color) |_| try writer.writeAll("%{B-}");
+            if (config.scroll_down) |_| try writer.writeAll("%{A}");
+            if (config.scroll_up) |_| try writer.writeAll("%{A}");
+            if (config.right_click) |_| try writer.writeAll("%{A}");
+            if (config.middle_click) |_| try writer.writeAll("%{A}");
+            if (config.left_click) |_| try writer.writeAll("%{A}");
+            if (config.margin_right) |o| try writer.print("%{{O{s}}}", .{o});
+            break :blk postfix;
+        },
+        .thread = undefined,
+    };
 }
 
 pub fn sort(comptime _: type, lhs: Self, rhs: Self) bool {
@@ -144,7 +148,7 @@ pub fn start(self: *Self, bar: *Bar) !void {
 fn threaded(self: *Self, bar: *Bar) !void {
     switch (self.mode) {
         .once => {
-            var process = std.ChildProcess.init(self.args, self.allocator);
+            var process = std.ChildProcess.init(self.args.items, self.allocator);
             process.stdin_behavior = .Ignore;
             process.stdout_behavior = .Pipe;
             process.stderr_behavior = .Inherit;
@@ -156,7 +160,7 @@ fn threaded(self: *Self, bar: *Bar) !void {
             _ = try process.wait(); // TODO: inspect exit condition
         },
         .interval => while (true) {
-            var process = std.ChildProcess.init(self.args, self.allocator);
+            var process = std.ChildProcess.init(self.args.items, self.allocator);
             process.stdin_behavior = .Ignore;
             process.stdout_behavior = .Pipe;
             process.stderr_behavior = .Inherit;
@@ -169,7 +173,7 @@ fn threaded(self: *Self, bar: *Bar) !void {
             std.time.sleep(self.interval.? * std.time.ns_per_ms);
         },
         .live => {
-            var process = std.ChildProcess.init(self.args, self.allocator);
+            var process = std.ChildProcess.init(self.args.items, self.allocator);
             process.stdin_behavior = .Ignore;
             process.stdout_behavior = .Pipe;
             process.stderr_behavior = .Inherit;
@@ -186,8 +190,8 @@ fn threaded(self: *Self, bar: *Bar) !void {
 }
 
 pub fn deinit(self: *Self) void {
-    self.allocator.free(self.args);
-    wordexp.wordfree(&self.expansion);
+    for (self.args.items) |arg| self.allocator.free(arg);
+    self.args.deinit();
     self.prefix.deinit();
     self.postfix.deinit();
     if (self.content) |content| self.allocator.free(content);
