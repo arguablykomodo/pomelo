@@ -37,6 +37,8 @@ const Config = struct {
     margin_left: ?[]const u8 = null,
     margin_right: ?[]const u8 = null,
     padding: ?[]const u8 = null,
+    prefix: ?[]const u8 = null,
+    postfix: ?[]const u8 = null,
     min_width: usize = 0,
     fill_direction: []const u8 = "left",
     underline: ?bool = null,
@@ -125,11 +127,13 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
             if (config.underline.?) try writer.writeAll("%{+u}");
             if (config.overline.?) try writer.writeAll("%{+o}");
             if (config.padding) |o| try writer.print("%{{O{s}}}", .{o});
+            if (config.prefix) |p| try writer.writeAll(p);
             break :blk prefix;
         },
         .content = null,
         .postfix = blk: {
             const writer = postfix.writer();
+            if (config.postfix) |p| try writer.writeAll(p);
             if (config.padding) |o| try writer.print("%{{O{s}}}", .{o});
             if (config.overline.?) try writer.writeAll("%{-o}");
             if (config.underline.?) try writer.writeAll("%{-u}");
