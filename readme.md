@@ -66,6 +66,8 @@ command is executed:
 |`margin_left`|Integer|Space added between left-adjacent blocks, in pixels.
 |`margin_right`|Integer|Space added between right-adjacent blocks, in pixels.
 |`padding`|Integer|Extra space added within the block, in pixels.
+|`min_width`|Integer|Minimum width of the block (will be padded with spaces).
+|`fill_direction`|String|Alignment of block content when its length is smaller than `min_width`. Can be `left`, `center`, or `right`.
 |`underline`|Boolean|Whether or not to draw an underline.
 |`overline`|Boolean|Whether or not to draw an overline.
 |`background_color`|String|Background color of the block.

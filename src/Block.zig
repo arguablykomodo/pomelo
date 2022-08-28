@@ -8,9 +8,11 @@ const Self = @This();
 allocator: std.mem.Allocator,
 args: std.ArrayList([]const u8),
 mode: Mode,
-interval: ?u64 = null,
+interval: ?u64,
 side: Side,
-position: usize = 0,
+position: usize,
+min_width: usize,
+fill_direction: Side,
 prefix: std.ArrayList(u8),
 content: ?[]const u8,
 postfix: std.ArrayList(u8),
@@ -35,6 +37,8 @@ const Config = struct {
     margin_left: ?[]const u8 = null,
     margin_right: ?[]const u8 = null,
     padding: ?[]const u8 = null,
+    min_width: usize = 0,
+    fill_direction: []const u8 = "left",
     underline: ?bool = null,
     overline: ?bool = null,
     background_color: ?[]const u8 = null,
@@ -100,6 +104,13 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
             return BlockError.UnknownBlockSide;
         },
         .position = config.position,
+        .min_width = config.min_width,
+        .fill_direction = blk: {
+            if (std.mem.eql(u8, config.fill_direction, "left")) break :blk Side.left;
+            if (std.mem.eql(u8, config.fill_direction, "center")) break :blk Side.center;
+            if (std.mem.eql(u8, config.fill_direction, "right")) break :blk Side.right;
+            return BlockError.UnknownBlockSide;
+        },
         .prefix = blk: {
             const writer = prefix.writer();
             if (config.margin_left) |o| try writer.print("%{{O{s}}}", .{o});
@@ -137,6 +148,46 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
     };
 }
 
+fn width(content: []const u8) !u64 {
+    var real_width: usize = 0;
+    var last_pos: usize = 0;
+    while (std.mem.indexOfScalarPos(u8, content, last_pos, '%')) |new_pos| {
+        real_width += try std.unicode.utf8CountCodepoints(content[last_pos..new_pos]);
+        switch (content[new_pos + 1]) {
+            '{' => if (std.mem.indexOfScalarPos(u8, content, new_pos + 1, '}')) |end| {
+                last_pos = end + 1;
+            } else return error.MalformedEscape,
+            '%' => {
+                real_width += 1;
+                last_pos = new_pos + 2;
+            },
+            else => {
+                real_width += 1;
+                last_pos = new_pos + 1;
+            },
+        }
+    } else real_width += try std.unicode.utf8CountCodepoints(content[last_pos..]);
+    return real_width;
+}
+
+fn pad(
+    allocator: std.mem.Allocator,
+    content: []const u8,
+    min_width: u64,
+    fill_direction: Side,
+) ![]const u8 {
+    const real_width = try width(content);
+    const new_content = try allocator.alloc(u8, content.len + if (real_width > min_width) 0 else min_width - real_width);
+    std.mem.set(u8, new_content, ' ');
+    const index = switch (fill_direction) {
+        Side.left => 0,
+        Side.center => (new_content.len - content.len) / 2,
+        Side.right => new_content.len - content.len,
+    };
+    std.mem.copy(u8, new_content[index..], content);
+    return new_content;
+}
+
 pub fn sort(comptime _: type, lhs: Self, rhs: Self) bool {
     return lhs.position < rhs.position;
 }
@@ -154,8 +205,10 @@ fn threaded(self: *Self, bar: *Bar) !void {
             process.stderr_behavior = .Inherit;
             try process.spawn();
             const stdout = process.stdout.?.reader();
+            const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
+            defer if (new_content) |content| self.allocator.free(content);
             if (self.content) |content| self.allocator.free(content);
-            self.content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024) orelse null;
+            self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
             try bar.update();
             _ = try process.wait(); // TODO: inspect exit condition
         },
@@ -166,8 +219,10 @@ fn threaded(self: *Self, bar: *Bar) !void {
             process.stderr_behavior = .Inherit;
             try process.spawn();
             const stdout = process.stdout.?.reader();
+            const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
+            defer if (new_content) |content| self.allocator.free(content);
             if (self.content) |content| self.allocator.free(content);
-            self.content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024) orelse null;
+            self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
             try bar.update();
             _ = try process.wait(); // TODO: inspect exit condition
             std.time.sleep(self.interval.? * std.time.ns_per_ms);
@@ -182,8 +237,9 @@ fn threaded(self: *Self, bar: *Bar) !void {
             const stdout = process.stdout.?.reader();
             while (true) {
                 const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
+                defer if (new_content) |content| self.allocator.free(content);
                 if (self.content) |content| self.allocator.free(content);
-                self.content = new_content;
+                self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
                 try bar.update();
                 if (@import("builtin").is_test) return;
             }
@@ -210,6 +266,28 @@ test "init" {
     defer live.deinit();
     try std.testing.expectError(BlockError.UnknownBlockMode, Self.init(std.testing.allocator, &cwd, "unknown_block.ini", &Bar.Defaults{}));
     try std.testing.expectError(BlockError.UnknownBlockSide, Self.init(std.testing.allocator, &cwd, "unknown_side.ini", &Bar.Defaults{}));
+}
+
+test "width" {
+    try std.testing.expectEqual(@as(usize, 7), try width("---%%---"));
+    try std.testing.expectEqual(@as(usize, 6), try width("---%{foo}---"));
+    try std.testing.expectEqual(@as(usize, 7), try width("---%---"));
+    try std.testing.expectEqual(@as(usize, 6), try width("--▆---"));
+    try std.testing.expectError(error.MalformedEscape, width("---%{---"));
+}
+
+test "pad" {
+    const left = try pad(std.testing.allocator, "▆▆▆", 6, Side.left);
+    defer std.testing.allocator.free(left);
+    try std.testing.expectEqualStrings("▆▆▆   ", left);
+
+    const center = try pad(std.testing.allocator, "▆▆▆", 6, Side.center);
+    defer std.testing.allocator.free(center);
+    try std.testing.expectEqualStrings(" ▆▆▆  ", center);
+
+    const right = try pad(std.testing.allocator, "▆▆▆", 6, Side.right);
+    defer std.testing.allocator.free(right);
+    try std.testing.expectEqualStrings("   ▆▆▆", right);
 }
 
 test "sort" {
