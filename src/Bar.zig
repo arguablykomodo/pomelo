@@ -65,58 +65,69 @@ pub fn init(config_dir: std.fs.Dir, alloc: std.mem.Allocator) !Self {
     };
 }
 
-pub fn start(self: *Self) !void {
-    var flags = std.ArrayList([]const u8).init(self.allocator);
+fn parseFlags(alloc: std.mem.Allocator, config: Config) ![][]const u8 {
+    var flags = std.ArrayList([]const u8).init(alloc);
+    errdefer flags.deinit();
 
     try flags.append("lemonbar");
 
-    var geometry = std.ArrayList(u8).init(self.allocator);
-    defer geometry.deinit();
+    var geometry = std.ArrayList(u8).init(alloc);
+    errdefer geometry.deinit();
     var geometry_writer = geometry.writer();
-    if (self.config.width) |w| try geometry_writer.print("{s}", .{w});
+    if (config.width) |w| try geometry_writer.print("{s}", .{w});
     try geometry_writer.writeByte('x');
-    if (self.config.height) |h| try geometry_writer.print("{s}", .{h});
+    if (config.height) |h| try geometry_writer.print("{s}", .{h});
     try geometry_writer.writeByte('+');
-    if (self.config.x) |x| try geometry_writer.print("{s}", .{x});
+    if (config.x) |x| try geometry_writer.print("{s}", .{x});
     try geometry_writer.writeByte('+');
-    if (self.config.y) |y| try geometry_writer.print("{s}", .{y});
+    if (config.y) |y| try geometry_writer.print("{s}", .{y});
     try flags.append("-g");
-    try flags.append(geometry.items);
+    try flags.append(geometry.toOwnedSlice());
 
-    if (self.config.bottom) try flags.append("-b");
-    if (self.config.force_docking) try flags.append("-d");
-    if (self.config.fonts) |fonts| {
+    if (config.bottom) try flags.append("-b");
+    if (config.force_docking) try flags.append("-d");
+    if (config.fonts) |fonts| {
         try flags.append("-f");
         var split = std.mem.split(u8, fonts, ";");
         while (split.next()) |font| try flags.append(font);
     }
 
-    if (self.config.wm_name) |n| {
+    if (config.wm_name) |n| {
         try flags.append("-n");
         try flags.append(n);
     }
 
-    if (self.config.line_width) |u| {
+    if (config.line_width) |u| {
         try flags.append("-u");
         try flags.append(u);
     }
 
-    if (self.config.background_color) |b| {
+    if (config.background_color) |b| {
         try flags.append("-B");
         try flags.append(b);
     }
 
-    if (self.config.foreground_color) |f| {
+    if (config.foreground_color) |f| {
         try flags.append("-F");
         try flags.append(f);
     }
 
-    if (self.config.line_color) |u| {
+    if (config.line_color) |u| {
         try flags.append("-U");
         try flags.append(u);
     }
 
-    var process = std.ChildProcess.init(flags.items, self.allocator);
+    return flags.toOwnedSlice();
+}
+
+pub fn start(self: *Self) !void {
+    const flags = try parseFlags(self.allocator, self.config);
+    defer {
+        self.allocator.free(flags[2]);
+        self.allocator.free(flags);
+    }
+
+    var process = std.ChildProcess.init(flags, self.allocator);
     process.stdin_behavior = .Pipe;
     try process.spawn();
     self.bar_writer = std.io.bufferedWriter(process.stdin.?.writer());
@@ -169,4 +180,28 @@ test "init" {
 
     const bar = try Self.init(cwd, std.testing.allocator);
     defer bar.deinit();
+}
+
+test "parseFlags" {
+    const config = Config{
+        .width = "10",
+        .height = "10",
+        .x = "10",
+        .y = "10",
+        .bottom = true,
+        .force_docking = true,
+        .fonts = "foo;bar",
+        .wm_name = "baz",
+        .line_width = "2",
+        .background_color = "#000",
+        .foreground_color = "#fff",
+        .line_color = "#fff",
+        .defaults = .{},
+    };
+
+    const flags = try parseFlags(std.testing.allocator, config);
+    defer {
+        std.testing.allocator.free(flags[2]);
+        std.testing.allocator.free(flags);
+    }
 }
