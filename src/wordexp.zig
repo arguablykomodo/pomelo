@@ -23,12 +23,12 @@ pub fn wordexp(string: [*c]const u8) WordexpError!c.wordexp_t {
     return result;
 }
 
-pub fn wordfree(result: *const c.wordexp_t) void {
+pub fn wordfree(result: [*c]c.wordexp_t) void {
     c.wordfree(result);
 }
 
 test "wordexp" {
-    const expansion = try wordexp("foo bar \"$(echo baz zug)\"");
+    var expansion = try wordexp("foo bar \"$(echo baz zug)\"");
     wordfree(&expansion);
     try std.testing.expectError(WordexpError.IllegalCharacter, wordexp("foo } bar"));
     try std.testing.expectError(WordexpError.SyntaxError, wordexp("\"foo"));
