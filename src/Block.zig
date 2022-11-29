@@ -84,7 +84,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
 
             const terminated = try std.mem.concat(alloc, u8, &.{ config.command, "\x00" });
             defer alloc.free(terminated);
-            var expansion = try wordexp.wordexp(@ptrCast([*c]const u8, terminated));
+            var expansion = try wordexp.wordexp(terminated);
             defer wordexp.wordfree(&expansion);
 
             const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, expansion.we_wordv));

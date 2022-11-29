@@ -4,7 +4,7 @@ const wordexp = @import("wordexp.zig");
 
 pub fn main() anyerror!void {
     var config_dir = x: {
-        const path = try wordexp.wordexp("${XDG_CONFIG_DIR:-$HOME/.config}/pomelo");
+        var path = try wordexp.wordexp("${XDG_CONFIG_DIR:-$HOME/.config}/pomelo");
         defer wordexp.wordfree(&path);
         break :x try std.fs.openDirAbsolute(std.mem.span(path.we_wordv[0]), .{});
     };
