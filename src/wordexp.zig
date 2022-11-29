@@ -3,8 +3,6 @@ const c = @cImport({
     @cInclude("wordexp.h");
 });
 
-pub const wordexp_t = c.wordexp_t;
-
 const WordexpError = error{
     IllegalCharacter,
     OutOfMemory,

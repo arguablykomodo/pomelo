@@ -91,31 +91,11 @@ fn parseFlags(alloc: std.mem.Allocator, config: Config) ![][]const u8 {
         var split = std.mem.split(u8, fonts, ";");
         while (split.next()) |font| try flags.append(font);
     }
-
-    if (config.wm_name) |n| {
-        try flags.append("-n");
-        try flags.append(n);
-    }
-
-    if (config.line_width) |u| {
-        try flags.append("-u");
-        try flags.append(u);
-    }
-
-    if (config.background_color) |b| {
-        try flags.append("-B");
-        try flags.append(b);
-    }
-
-    if (config.foreground_color) |f| {
-        try flags.append("-F");
-        try flags.append(f);
-    }
-
-    if (config.line_color) |u| {
-        try flags.append("-U");
-        try flags.append(u);
-    }
+    if (config.wm_name) |n| try flags.appendSlice(&.{ "-n", n });
+    if (config.line_width) |u| try flags.appendSlice(&.{ "-u", u });
+    if (config.background_color) |b| try flags.appendSlice(&.{ "-B", b });
+    if (config.foreground_color) |f| try flags.appendSlice(&.{ "-F", f });
+    if (config.line_color) |u| try flags.appendSlice(&.{ "-U", u });
 
     return flags.toOwnedSlice();
 }

@@ -19,7 +19,18 @@ postfix: std.ArrayList(u8),
 thread: std.Thread,
 
 const Mode = enum { once, interval, live };
+const mode_map = std.ComptimeStringMap(Mode, .{
+    .{ "once", .once },
+    .{ "interval", .interval },
+    .{ "live", .live },
+});
+
 const Side = enum { left, center, right };
+const side_map = std.ComptimeStringMap(Side, .{
+    .{ "left", .left },
+    .{ "center", .center },
+    .{ "right", .right },
+});
 
 const Config = struct {
     command: []const u8 = "",
@@ -92,27 +103,12 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
 
             break :blk args;
         },
-        .mode = blk: {
-            if (std.mem.eql(u8, config.mode, "once")) break :blk Mode.once;
-            if (std.mem.eql(u8, config.mode, "interval")) break :blk Mode.interval;
-            if (std.mem.eql(u8, config.mode, "live")) break :blk Mode.live;
-            return BlockError.UnknownBlockMode;
-        },
+        .mode = mode_map.get(config.mode) orelse return BlockError.UnknownBlockMode,
         .interval = if (std.mem.eql(u8, config.mode, "interval") and config.interval == null) return error.MissingInterval else config.interval,
-        .side = blk: {
-            if (std.mem.eql(u8, config.side, "left")) break :blk Side.left;
-            if (std.mem.eql(u8, config.side, "center")) break :blk Side.center;
-            if (std.mem.eql(u8, config.side, "right")) break :blk Side.right;
-            return BlockError.UnknownBlockSide;
-        },
+        .side = side_map.get(config.side) orelse return BlockError.UnknownBlockSide,
         .position = config.position,
         .min_width = config.min_width,
-        .fill_direction = blk: {
-            if (std.mem.eql(u8, config.fill_direction, "left")) break :blk Side.left;
-            if (std.mem.eql(u8, config.fill_direction, "center")) break :blk Side.center;
-            if (std.mem.eql(u8, config.fill_direction, "right")) break :blk Side.right;
-            return BlockError.UnknownBlockSide;
-        },
+        .fill_direction = side_map.get(config.fill_direction) orelse return BlockError.UnknownBlockSide,
         .prefix = blk: {
             const writer = prefix.writer();
             if (config.margin_left) |o| try writer.print("%{{O{s}}}", .{o});
