@@ -192,11 +192,11 @@ pub fn sort(comptime _: type, lhs: Self, rhs: Self) bool {
     return lhs.position < rhs.position;
 }
 
-pub fn start(self: *Self, bar: *Bar) !void {
-    self.thread = try std.Thread.spawn(.{}, Self.threaded, .{ self, bar });
+pub fn start(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
+    self.thread = try std.Thread.spawn(.{}, Self.threaded, .{ self, should_update });
 }
 
-fn threaded(self: *Self, bar: *Bar) !void {
+fn threaded(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
     switch (self.mode) {
         .once => {
             var process = std.ChildProcess.init(self.args.items, self.allocator);
@@ -209,7 +209,8 @@ fn threaded(self: *Self, bar: *Bar) !void {
             defer if (new_content) |content| self.allocator.free(content);
             if (self.content) |content| self.allocator.free(content);
             self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
-            try bar.update();
+            should_update.store(1, .Release);
+            std.Thread.Futex.wake(should_update, 1);
             _ = try process.wait(); // TODO: inspect exit condition
         },
         .interval => while (true) {
@@ -223,7 +224,8 @@ fn threaded(self: *Self, bar: *Bar) !void {
             defer if (new_content) |content| self.allocator.free(content);
             if (self.content) |content| self.allocator.free(content);
             self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
-            try bar.update();
+            should_update.store(1, .Release);
+            std.Thread.Futex.wake(should_update, 1);
             _ = try process.wait(); // TODO: inspect exit condition
             std.time.sleep(self.interval.? * std.time.ns_per_ms);
             if (@import("builtin").is_test) return;
@@ -240,7 +242,8 @@ fn threaded(self: *Self, bar: *Bar) !void {
                 defer if (new_content) |content| self.allocator.free(content);
                 if (self.content) |content| self.allocator.free(content);
                 self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
-                try bar.update();
+                should_update.store(1, .Release);
+                std.Thread.Futex.wake(should_update, 1);
                 if (@import("builtin").is_test) return;
             }
         },
@@ -308,31 +311,29 @@ test "sort" {
 test "start" {
     var output = std.ArrayList(u8).init(std.testing.allocator);
     defer output.deinit();
-    var bar = Bar{
-        .allocator = std.testing.allocator,
-        .config_bytes = try std.testing.allocator.alloc(u8, 8),
-        .config = .{},
-        .blocks = std.ArrayList(Self).init(std.testing.allocator),
-        .bar_writer = std.io.bufferedWriter(output.writer()),
-    };
-    defer bar.deinit();
+    var should_update = std.atomic.Atomic(u32).init(0);
 
     var cwd = try std.fs.cwd().openDir("test/blocks", .{});
     defer cwd.close();
 
-    try bar.blocks.append(try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{}));
-    try bar.blocks.append(try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{}));
-    try bar.blocks.append(try Self.init(std.testing.allocator, &cwd, "live.ini", &Bar.Defaults{}));
+    var once_block = try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{});
+    defer once_block.deinit();
+    try once_block.start(&should_update);
 
-    try bar.blocks.items[0].start(&bar);
-    bar.blocks.items[0].thread.join();
-    try std.testing.expectEqualStrings("once", bar.blocks.items[0].content.?);
+    var interval_block = try Self.init(std.testing.allocator, &cwd, "interval.ini", &Bar.Defaults{});
+    defer interval_block.deinit();
+    try interval_block.start(&should_update);
 
-    try bar.blocks.items[1].start(&bar);
-    bar.blocks.items[1].thread.join();
-    try std.testing.expectEqualStrings("interval", bar.blocks.items[1].content.?);
+    var live_block = try Self.init(std.testing.allocator, &cwd, "live.ini", &Bar.Defaults{});
+    defer live_block.deinit();
+    try live_block.start(&should_update);
 
-    try bar.blocks.items[2].start(&bar);
-    bar.blocks.items[2].thread.join();
-    try std.testing.expectEqualStrings("live", bar.blocks.items[2].content.?);
+    once_block.thread.join();
+    try std.testing.expectEqualStrings("once", once_block.content.?);
+
+    interval_block.thread.join();
+    try std.testing.expectEqualStrings("interval", interval_block.content.?);
+
+    live_block.thread.join();
+    try std.testing.expectEqualStrings("live", live_block.content.?);
 }

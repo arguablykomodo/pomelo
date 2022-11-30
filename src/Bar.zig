@@ -10,6 +10,7 @@ config_bytes: []const u8,
 config: Config,
 blocks: std.ArrayList(Block),
 bar_writer: std.io.BufferedWriter(4096, if (@import("builtin").is_test) std.ArrayList(u8).Writer else std.fs.File.Writer),
+should_update: std.atomic.Atomic(u32),
 
 const Config = struct {
     width: ?[]const u8 = null,
@@ -62,6 +63,7 @@ pub fn init(config_dir: std.fs.Dir, alloc: std.mem.Allocator) !Self {
         .config = config,
         .blocks = blocks,
         .bar_writer = undefined,
+        .should_update = std.atomic.Atomic(u32).init(0),
     };
 }
 
@@ -111,7 +113,14 @@ pub fn start(self: *Self) !void {
     process.stdin_behavior = .Pipe;
     try process.spawn();
     self.bar_writer = std.io.bufferedWriter(process.stdin.?.writer());
-    for (self.blocks.items) |*block| try block.start(self);
+    for (self.blocks.items) |*block| try block.start(&self.should_update);
+
+    while (true) {
+        std.Thread.Futex.wait(&self.should_update, 0);
+        try self.update();
+        self.should_update.store(0, .Release);
+    }
+
     for (self.blocks.items) |block| block.thread.join();
     _ = try process.wait();
 }
