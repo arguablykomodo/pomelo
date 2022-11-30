@@ -76,15 +76,14 @@ fn parseFlags(alloc: std.mem.Allocator, config: Config) ![][]const u8 {
     var geometry = std.ArrayList(u8).init(alloc);
     errdefer geometry.deinit();
     var geometry_writer = geometry.writer();
-    if (config.width) |w| try geometry_writer.print("{s}", .{w});
+    if (config.width) |w| try geometry_writer.writeAll(w);
     try geometry_writer.writeByte('x');
-    if (config.height) |h| try geometry_writer.print("{s}", .{h});
+    if (config.height) |h| try geometry_writer.writeAll(h);
     try geometry_writer.writeByte('+');
-    if (config.x) |x| try geometry_writer.print("{s}", .{x});
+    if (config.x) |x| try geometry_writer.writeAll(x);
     try geometry_writer.writeByte('+');
-    if (config.y) |y| try geometry_writer.print("{s}", .{y});
-    try flags.append("-g");
-    try flags.append(geometry.toOwnedSlice());
+    if (config.y) |y| try geometry_writer.writeAll(y);
+    try flags.appendSlice(&.{ "-g", geometry.toOwnedSlice() });
 
     if (config.bottom) try flags.append("-b");
     if (config.force_docking) try flags.append("-d");
@@ -140,20 +139,14 @@ pub fn update(self: *Self) !void {
                 .center => center.writer(),
                 .right => right.writer(),
             };
-            try writer.writeAll(block.prefix.items);
-            try writer.writeAll(content);
-            try writer.writeAll(block.postfix.items);
+            try writer.print("{s}{s}{s}", .{ block.prefix.items, content, block.postfix.items });
         }
     }
 
-    const writer = self.bar_writer.writer();
-    try writer.writeAll("%{l}");
-    try writer.writeAll(left.items);
-    try writer.writeAll("%{c}");
-    try writer.writeAll(center.items);
-    try writer.writeAll("%{r}");
-    try writer.writeAll(right.items);
-    try writer.writeByte('\n');
+    try self.bar_writer.writer().print(
+        "%{{l}}{s}%{{c}}{s}%{{r}}{s}\n",
+        .{ left.items, center.items, right.items },
+    );
     try self.bar_writer.flush();
 }
 
