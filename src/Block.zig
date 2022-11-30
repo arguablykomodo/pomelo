@@ -15,6 +15,7 @@ min_width: usize,
 fill_direction: Side,
 prefix: std.ArrayList(u8),
 content: ?[]const u8,
+content_lock: std.Thread.Mutex,
 postfix: std.ArrayList(u8),
 thread: std.Thread,
 
@@ -127,6 +128,7 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
             break :blk prefix;
         },
         .content = null,
+        .content_lock = .{},
         .postfix = blk: {
             const writer = postfix.writer();
             if (config.postfix) |p| try writer.writeAll(p);
@@ -196,6 +198,20 @@ pub fn start(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
     self.thread = try std.Thread.spawn(.{}, Self.threaded, .{ self, should_update });
 }
 
+fn update(self: *Self, should_update: *std.atomic.Atomic(u32), new_content: ?[]const u8) !void {
+    if (self.content == null and new_content == null) return;
+    {
+        self.content_lock.lock();
+        defer self.content_lock.unlock();
+        const old_content = self.content;
+        defer if (old_content) |content| self.allocator.free(content);
+        defer if (new_content) |content| self.allocator.free(content);
+        self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
+    }
+    should_update.store(1, .Release);
+    std.Thread.Futex.wake(should_update, 1);
+}
+
 fn threaded(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
     switch (self.mode) {
         .once => {
@@ -206,11 +222,7 @@ fn threaded(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
             try process.spawn();
             const stdout = process.stdout.?.reader();
             const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
-            defer if (new_content) |content| self.allocator.free(content);
-            if (self.content) |content| self.allocator.free(content);
-            self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
-            should_update.store(1, .Release);
-            std.Thread.Futex.wake(should_update, 1);
+            try self.update(should_update, new_content);
             _ = try process.wait(); // TODO: inspect exit condition
         },
         .interval => while (true) {
@@ -221,11 +233,7 @@ fn threaded(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
             try process.spawn();
             const stdout = process.stdout.?.reader();
             const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
-            defer if (new_content) |content| self.allocator.free(content);
-            if (self.content) |content| self.allocator.free(content);
-            self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
-            should_update.store(1, .Release);
-            std.Thread.Futex.wake(should_update, 1);
+            try self.update(should_update, new_content);
             _ = try process.wait(); // TODO: inspect exit condition
             std.time.sleep(self.interval.? * std.time.ns_per_ms);
             if (@import("builtin").is_test) return;
@@ -239,11 +247,7 @@ fn threaded(self: *Self, should_update: *std.atomic.Atomic(u32)) !void {
             const stdout = process.stdout.?.reader();
             while (true) {
                 const new_content = try stdout.readUntilDelimiterOrEofAlloc(self.allocator, '\n', 1024);
-                defer if (new_content) |content| self.allocator.free(content);
-                if (self.content) |content| self.allocator.free(content);
-                self.content = if (new_content) |content| try pad(self.allocator, content, self.min_width, self.fill_direction) else null;
-                should_update.store(1, .Release);
-                std.Thread.Futex.wake(should_update, 1);
+                try self.update(should_update, new_content);
                 if (@import("builtin").is_test) return;
             }
         },

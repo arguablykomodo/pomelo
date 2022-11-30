@@ -132,7 +132,9 @@ pub fn update(self: *Self) !void {
     var right = std.ArrayList(u8).init(self.allocator);
     defer right.deinit();
 
-    for (self.blocks.items) |block| {
+    for (self.blocks.items) |*block| {
+        block.content_lock.lock();
+        defer block.content_lock.unlock();
         if (block.content) |content| {
             const writer = switch (block.side) {
                 .left => left.writer(),
