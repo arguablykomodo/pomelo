@@ -88,9 +88,8 @@ fn parseFlags(alloc: std.mem.Allocator, config: Config) ![][]const u8 {
     if (config.bottom) try flags.append("-b");
     if (config.force_docking) try flags.append("-d");
     if (config.fonts) |fonts| {
-        try flags.append("-f");
         var split = std.mem.split(u8, fonts, ";");
-        while (split.next()) |font| try flags.append(font);
+        while (split.next()) |font| try flags.appendSlice(&.{ "-f", font });
     }
     if (config.wm_name) |n| try flags.appendSlice(&.{ "-n", n });
     if (config.line_width) |u| try flags.appendSlice(&.{ "-u", u });
