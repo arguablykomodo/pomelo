@@ -83,7 +83,7 @@ fn parseFlags(alloc: std.mem.Allocator, config: Config) ![][]const u8 {
     if (config.x) |x| try geometry_writer.writeAll(x);
     try geometry_writer.writeByte('+');
     if (config.y) |y| try geometry_writer.writeAll(y);
-    try flags.appendSlice(&.{ "-g", geometry.toOwnedSlice() });
+    try flags.appendSlice(&.{ "-g", try geometry.toOwnedSlice() });
 
     if (config.bottom) try flags.append("-b");
     if (config.force_docking) try flags.append("-d");
