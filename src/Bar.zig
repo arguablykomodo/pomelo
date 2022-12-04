@@ -20,6 +20,7 @@ const Config = struct {
     bottom: bool = false,
     force_docking: bool = false,
     fonts: ?[]const u8 = null,
+    clickable_areas: ?[]const u8 = null,
     wm_name: ?[]const u8 = null,
     line_width: ?[]const u8 = null,
     background_color: ?[]const u8 = null,
@@ -91,6 +92,7 @@ fn parseFlags(alloc: std.mem.Allocator, config: Config) ![][]const u8 {
         var split = std.mem.split(u8, fonts, ";");
         while (split.next()) |font| try flags.appendSlice(&.{ "-f", font });
     }
+    if (config.clickable_areas) |a| try flags.appendSlice(&.{ "-a", a });
     if (config.wm_name) |n| try flags.appendSlice(&.{ "-n", n });
     if (config.line_width) |u| try flags.appendSlice(&.{ "-u", u });
     if (config.background_color) |b| try flags.appendSlice(&.{ "-B", b });

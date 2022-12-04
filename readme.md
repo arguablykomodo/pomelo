@@ -33,6 +33,7 @@ These are all set in the `pomelo.ini` file.
 |`bottom`|Boolean|Whether or not to dock the bar at the bottom of the screen.
 |`force_docking`|Boolean|Whether or not to force docking without asking the window manager.
 |`fonts`|String|Fonts to use. Comma-separated.
+|`clickable_areas`|Integer|Number of clickable areas. The default is 10.
 |`wm_name`|String|Sets the `WM_NAME` atom value for the bar.
 |`line_width`|Integer|Width of underlines and overlines, in pixels.
 |`background_color`|String|Background color of the bar.
