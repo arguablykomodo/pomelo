@@ -14,31 +14,31 @@ pub fn parse(comptime T: type, bytes: []const u8) ParseError!T {
     var lines = std.mem.tokenize(u8, bytes, "\r\n");
 
     while (lines.next()) |line| {
-        const trimmed = std.mem.trimLeft(u8, line, &std.ascii.spaces);
+        const trimmed = std.mem.trimLeft(u8, line, &std.ascii.whitespace);
         switch (trimmed[0]) {
             ';' => continue,
             '[' => {
                 const end = std.mem.indexOfScalar(u8, trimmed, ']') orelse return ParseError.MissingSectionClose;
                 const section = trimmed[1..end];
                 inline for (fields) |field| {
-                    switch (@typeInfo(field.field_type)) {
+                    switch (@typeInfo(field.type)) {
                         .Optional => |opt| if (@typeInfo(opt.child) != .Struct) continue,
                         .Struct => {},
                         else => continue,
                     }
                     if (std.mem.eql(u8, field.name, section)) {
-                        @field(parsed, field.name) = try parse(field.field_type, lines.rest());
+                        @field(parsed, field.name) = try parse(field.type, lines.rest());
                         return parsed; // No support for multiple sections.
                     }
                 } else return ParseError.UnknownSection;
             },
             else => {
                 const separator = std.mem.indexOfScalar(u8, trimmed, '=') orelse return ParseError.MissingEquals;
-                const key = std.mem.trim(u8, trimmed[0..separator], &std.ascii.spaces);
-                const value = std.mem.trim(u8, trimmed[separator + 1 ..], &std.ascii.spaces);
+                const key = std.mem.trim(u8, trimmed[0..separator], &std.ascii.whitespace);
+                const value = std.mem.trim(u8, trimmed[separator + 1 ..], &std.ascii.whitespace);
                 inline for (fields) |field| {
                     if (std.mem.eql(u8, field.name, key)) {
-                        @field(parsed, field.name) = try parseValue(field.field_type, value);
+                        @field(parsed, field.name) = try parseValue(field.type, value);
                         break;
                     }
                 } else return ParseError.UnknownField;
