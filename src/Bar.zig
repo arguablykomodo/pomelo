@@ -53,10 +53,10 @@ pub fn init(config_dir: std.fs.Dir, alloc: std.mem.Allocator) !Self {
     defer blocks_dir.close();
     var blocks_iterator = blocks_dir.iterate();
     while (try blocks_iterator.next()) |block_file| {
-        if (block_file.kind != .File) continue;
+        if (block_file.kind != .file) continue;
         try blocks.append(try Block.init(alloc, &blocks_dir.dir, block_file.name, &config.defaults));
     }
-    std.sort.sort(Block, blocks.items, void, Block.sort);
+    std.sort.block(Block, blocks.items, {}, Block.sort);
 
     return Self{
         .allocator = alloc,

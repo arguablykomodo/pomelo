@@ -180,7 +180,7 @@ fn pad(
 ) ![]const u8 {
     const real_width = try width(content);
     const new_content = try allocator.alloc(u8, content.len + if (real_width > min_width) 0 else min_width - real_width);
-    std.mem.set(u8, new_content, ' ');
+    @memset(new_content, ' ');
     const index = switch (fill_direction) {
         Side.left => 0,
         Side.center => (new_content.len - content.len) / 2,
@@ -190,7 +190,7 @@ fn pad(
     return new_content;
 }
 
-pub fn sort(comptime _: type, lhs: Self, rhs: Self) bool {
+pub fn sort(_: void, lhs: Self, rhs: Self) bool {
     return lhs.position < rhs.position;
 }
 
@@ -306,7 +306,7 @@ test "sort" {
         try Self.init(std.testing.allocator, &cwd, "once.ini", &Bar.Defaults{}),
     };
     defer for (blocks) |block| block.deinit();
-    std.sort.sort(Self, &blocks, void, Self.sort);
+    std.sort.block(Self, &blocks, {}, Self.sort);
     try std.testing.expectEqual(Mode.once, blocks[0].mode);
     try std.testing.expectEqual(Mode.interval, blocks[1].mode);
     try std.testing.expectEqual(Mode.live, blocks[2].mode);
