@@ -11,7 +11,7 @@ const WordexpError = error{
 
 pub fn wordexp(string: []const u8) WordexpError!c.wordexp_t {
     var result: c.wordexp_t = undefined;
-    switch (c.wordexp(@ptrCast([*c]const u8, string), &result, 0)) {
+    switch (c.wordexp(@ptrCast(string), &result, 0)) {
         0 => {},
         c.WRDE_BADCHAR => return WordexpError.IllegalCharacter,
         c.WRDE_NOSPACE => return WordexpError.OutOfMemory,

@@ -99,8 +99,8 @@ pub fn init(alloc: std.mem.Allocator, dir: *const std.fs.Dir, filename: []const 
             var expansion = try wordexp.wordexp(terminated);
             defer wordexp.wordfree(&expansion);
 
-            const casted = std.mem.span(@ptrCast([*:null]?[*:0]const u8, expansion.we_wordv));
-            for (casted) |arg| try args.append(try alloc.dupe(u8, std.mem.span(arg.?)));
+            const casted: [*:null]?[*:0]const u8 = @ptrCast(expansion.we_wordv);
+            for (std.mem.span(casted)) |arg| try args.append(try alloc.dupe(u8, std.mem.span(arg.?)));
 
             break :blk args;
         },
