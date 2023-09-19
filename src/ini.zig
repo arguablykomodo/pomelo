@@ -51,6 +51,7 @@ pub fn parse(comptime T: type, bytes: []const u8) ParseError!T {
 const ParseValueError = error{
     MalformedBoolean,
     Unimplemented,
+    UnknownEnumVariant,
 } || std.fmt.ParseIntError;
 
 fn parseValue(comptime T: type, bytes: []const u8) ParseValueError!T {
@@ -66,6 +67,14 @@ fn parseValue(comptime T: type, bytes: []const u8) ParseValueError!T {
             return bytes;
         },
         .Optional => |opt| return try parseValue(opt.child, bytes),
+        .Enum => |@"enum"| {
+            inline for (@"enum".fields) |field| {
+                if (std.mem.eql(u8, bytes, field.name)) {
+                    return @field(T, field.name);
+                }
+            }
+            return ParseValueError.UnknownEnumVariant;
+        },
         else => return ParseValueError.Unimplemented,
     }
 }
@@ -109,6 +118,11 @@ test "parseValue" {
 
     try std.testing.expectEqual(@as(?bool, false), try parseValue(?bool, "false"));
     try std.testing.expectEqual(@as(?bool, true), try parseValue(?bool, "true"));
+
+    const Enum = enum { foo, bar };
+    try std.testing.expectEqual(Enum.foo, try parseValue(Enum, "foo"));
+    try std.testing.expectEqual(Enum.bar, try parseValue(Enum, "bar"));
+    try std.testing.expectError(ParseValueError.UnknownEnumVariant, parseValue(Enum, "baz"));
 
     try std.testing.expectError(ParseValueError.Unimplemented, parseValue(f32, "5.0"));
 }
