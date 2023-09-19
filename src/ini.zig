@@ -5,12 +5,23 @@ const ParseError = error{
     UnknownSection,
     MissingEquals,
     UnknownField,
+    UnsetMandatoryField,
 } || ParseValueError;
 
 pub fn parse(comptime T: type, bytes: []const u8) ParseError!T {
     const fields = @typeInfo(T).Struct.fields;
 
-    var parsed: T = .{};
+    const mandatory_fields = blk: {
+        comptime var mandatory_fields = 0;
+        inline for (fields) |field| {
+            if (@typeInfo(field.type) != .Optional and
+                field.default_value == null) mandatory_fields += 1;
+        }
+        break :blk mandatory_fields;
+    };
+    var set_fields: usize = 0;
+
+    var parsed = std.mem.zeroInit(T, .{});
     var lines = std.mem.tokenize(u8, bytes, "\r\n");
 
     while (lines.next()) |line| {
@@ -28,6 +39,8 @@ pub fn parse(comptime T: type, bytes: []const u8) ParseError!T {
                     }
                     if (std.mem.eql(u8, field.name, section)) {
                         @field(parsed, field.name) = try parse(field.type, lines.rest());
+                        if (@typeInfo(field.type) != .Optional and
+                            field.default_value == null) set_fields += 1;
                         return parsed; // No support for multiple sections.
                     }
                 } else return ParseError.UnknownSection;
@@ -39,12 +52,16 @@ pub fn parse(comptime T: type, bytes: []const u8) ParseError!T {
                 inline for (fields) |field| {
                     if (std.mem.eql(u8, field.name, key)) {
                         @field(parsed, field.name) = try parseValue(field.type, value);
+                        if (@typeInfo(field.type) != .Optional and
+                            field.default_value == null) set_fields += 1;
                         break;
                     }
                 } else return ParseError.UnknownField;
             },
         }
     }
+
+    if (set_fields < mandatory_fields) return ParseError.UnsetMandatoryField;
     return parsed;
 }
 
@@ -83,23 +100,31 @@ test "parse" {
     const Struct = struct {
         foo: u64 = 0,
         bar: struct { baz: u64 = 0 } = .{},
+        qux: u8,
     };
-    try std.testing.expectEqual(Struct{ .foo = 10 }, try parse(Struct, "foo = 10"));
-    try std.testing.expectEqual(Struct{ .foo = 10 }, try parse(Struct,
+    try std.testing.expectEqual(Struct{ .foo = 10, .qux = 0 }, try parse(Struct,
+        \\foo = 10
+        \\qux = 0
+    ));
+    try std.testing.expectEqual(Struct{ .foo = 10, .qux = 0 }, try parse(Struct,
         \\; This is a comment
         \\foo = 10
+        \\qux = 0
     ));
-    try std.testing.expectEqual(Struct{ .foo = 10, .bar = .{ .baz = 10 } }, try parse(Struct,
+    try std.testing.expectEqual(Struct{ .foo = 10, .bar = .{ .baz = 10 }, .qux = 0 }, try parse(Struct,
         \\foo = 10
+        \\qux = 0
         \\[bar]
         \\baz = 10
     ));
     try std.testing.expectError(ParseError.MissingSectionClose, parse(Struct, "[what"));
     try std.testing.expectError(ParseError.UnknownField, parse(Struct, "baz = 10"));
     try std.testing.expectError(ParseError.UnknownSection, parse(Struct,
+        \\qux = 0
         \\[what]
         \\bar = 10
     ));
+    try std.testing.expectError(ParseError.UnsetMandatoryField, parse(Struct, "foo = 10"));
 }
 
 test "parseValue" {
