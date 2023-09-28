@@ -32,9 +32,10 @@ These are all set in the `pomelo.ini` file.
 |`y`|Integer|Bar vertical offset in pixels.
 |`bottom`|Boolean|Whether or not to dock the bar at the bottom of the screen.
 |`force_docking`|Boolean|Whether or not to force docking without asking the window manager.
-|`fonts`|String|Fonts to use. Comma-separated.
 |`clickable_areas`|Integer|Number of clickable areas. The default is 10.
 |`wm_name`|String|Sets the `WM_NAME` atom value for the bar.
+|`fonts`|String|Fonts to use. Comma-separated.
+|`vertical_offset`|Integer|Vertical text offset. Can be optional.
 |`line_width`|Integer|Width of underlines and overlines, in pixels.
 |`background_color`|String|Background color of the bar.
 |`foreground_color`|String|Foreground color of the bar.
@@ -64,23 +65,23 @@ command is executed:
 |`right_click`|String|Command to execute when the block is right clicked.
 |`scroll_up`|String|Command to execute when the block is scrolled up.
 |`scroll_down`|String|Command to execute when the block is scrolled down.
+|`min_width`|Integer|Minimum width of the block (will be padded with spaces).
+|`fill_direction`|String|Alignment of block content when its length is smaller than `min_width`. Can be `left`, `center`, or `right`.
 |`margin_left`|Integer|Space added between left-adjacent blocks, in pixels.
 |`margin_right`|Integer|Space added between right-adjacent blocks, in pixels.
 |`padding`|Integer|Extra space added within the block, in pixels.
 |`prefix`|String|String to be added to the beggining of the block.
 |`postfix`|String|String to be added to the end of the block.
-|`min_width`|Integer|Minimum width of the block (will be padded with spaces).
-|`fill_direction`|String|Alignment of block content when its length is smaller than `min_width`. Can be `left`, `center`, or `right`.
 |`underline`|Boolean|Whether or not to draw an underline.
 |`overline`|Boolean|Whether or not to draw an overline.
 |`background_color`|String|Background color of the block.
 |`foreground_color`|String|Foreground color of the block.
 |`line_color`|String|Color of the blocks underlines/overlines.
 
-The `margin_left`, `margin_right`, `padding`, `underline`, `overline`, and
-`background_color` properties can also be set in the `[defaults]` section of
-`pomelo.ini`, and will act as a fallback for any blocks that don't have these
-properties set.
+The `margin_left`, `margin_right`, `padding`, `prefix`, `postfix`, `underline`,
+`overline`, and `background_color` properties can also be set in the
+`[defaults]` section of `pomelo.ini`, and will act as a fallback for any blocks
+that don't have these properties set.
 
 [bar]:https://github.com/LemonBoy/bar
 [succade]:https://github.com/domsson/succade

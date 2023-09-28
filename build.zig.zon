@@ -1,0 +1,10 @@
+.{
+    .name = "pomelo",
+    .version = "0.1.0",
+    .dependencies = .{
+        .libxev = .{
+            .url = "https://github.com/mitchellh/libxev/archive/9068c5d954f97b8498f265b1dd6db9d67f6bc103.tar.gz",
+            .hash = "1220f6fa20aacd0b388092275e6f19829217e0d432dff171a47e43e0e9323631dde8",
+        },
+    },
+}

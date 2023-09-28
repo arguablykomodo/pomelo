@@ -4,6 +4,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const xev = b.dependency("libxev", .{ .target = target, .optimize = optimize });
+
     const exe = b.addExecutable(.{
         .name = "pomelo",
         .root_source_file = .{ .path = "src/main.zig" },
@@ -11,6 +13,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     exe.linkLibC();
+    exe.addModule("xev", xev.module("xev"));
+
     b.installArtifact(exe);
 
     const run_cmd = b.addRunArtifact(exe);
@@ -28,6 +32,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     unit_tests.linkLibC();
+    unit_tests.addModule("xev", xev.module("xev"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");

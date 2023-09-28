@@ -1,4 +1,5 @@
 const std = @import("std");
+const xev = @import("xev");
 const Bar = @import("Bar.zig");
 const wordexp = @import("wordexp.zig");
 
@@ -10,15 +11,17 @@ pub fn main() anyerror!void {
     };
     defer config_dir.close();
 
-    var bar = try Bar.init(config_dir, std.heap.c_allocator);
-    defer bar.deinit();
+    var thread_pool = xev.ThreadPool.init(.{});
+    var loop = try xev.Loop.init(.{ .thread_pool = &thread_pool });
 
-    try bar.start();
+    var bar = try Bar.init(std.heap.c_allocator, config_dir, &loop);
+    defer bar.deinit();
+    try bar.run();
+
+    try loop.run(.until_done);
 }
 
 test {
     _ = @import("ini.zig");
     _ = @import("wordexp.zig");
-    _ = @import("Block.zig");
-    _ = @import("Bar.zig");
 }
