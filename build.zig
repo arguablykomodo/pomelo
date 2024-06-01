@@ -8,12 +8,12 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "pomelo",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     exe.linkLibC();
-    exe.addModule("xev", xev.module("xev"));
+    exe.root_module.addImport("xev", xev.module("xev"));
 
     b.installArtifact(exe);
 
@@ -27,18 +27,18 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
 
     const unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     unit_tests.linkLibC();
-    unit_tests.addModule("xev", xev.module("xev"));
+    unit_tests.root_module.addImport("xev", xev.module("xev"));
 
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
 
-    const cov = std.build.Step.Run.create(b, "Test coverage");
+    const cov = std.Build.Step.Run.create(b, "Test coverage");
     cov.addArgs(&[_][]const u8{ "kcov", "--include-path", ".", "kcov-output" });
     cov.addArtifactArg(unit_tests);
     b.step("cov", "Run tests and report coverage (requires kcov)").dependOn(&cov.step);

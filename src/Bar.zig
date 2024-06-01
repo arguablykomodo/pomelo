@@ -104,12 +104,12 @@ pub fn deinit(self: *@This()) void {
 }
 
 pub fn run(self: *@This()) !void {
-    var blocks_dir = try self.dir.openIterableDir("blocks", .{ .access_sub_paths = false });
+    var blocks_dir = try self.dir.openDir("blocks", .{ .access_sub_paths = false, .iterate = true });
     defer blocks_dir.close();
     var blocks_iterator = blocks_dir.iterate();
     while (try blocks_iterator.next()) |block_file| {
         if (block_file.kind != .file) continue;
-        try self.blocks.append(try Block.init(self.alloc, &blocks_dir.dir, self, block_file.name));
+        try self.blocks.append(try Block.init(self.alloc, &blocks_dir, self, block_file.name));
     }
     std.sort.block(Block, self.blocks.items, {}, Block.sort);
     for (self.blocks.items) |*block| try block.run();
